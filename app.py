@@ -7,7 +7,9 @@ from telebot import types
 import os
 import json
 
-TOKEN = "8644848473:AAG8tB1x79AopY0hA1zoDShJ4Z1UhNHILKo"
+TOKEN = os.getenv("BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("BOT_TOKEN topilmadi!")
 bot = telebot.TeleBot(TOKEN)
 
 app = Flask(__name__)
