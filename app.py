@@ -101,17 +101,16 @@ questions = [
 def process_steps(message):
     data = user_data[message.chat.id]
 
-    for step in steps:
+    for i, step in enumerate(steps):
         if step not in data:
             data[step] = message.text
-            index = steps.index(step)
 
-            if index < len(questions):
-                bot.send_message(message.chat.id, questions[index])
-            else:
+            # agar oxirgi savol bo‘lsa
+            if i == len(steps) - 1:
                 save_data(message.chat.id)
+            else:
+                bot.send_message(message.chat.id, questions[i])
             return
-
 def save_data(chat_id):
     data = user_data[chat_id]
 
