@@ -7,7 +7,7 @@ from telebot import types
 import os
 import json
 
-TOKEN = "SIZNING_TOKEN"
+TOKEN = "8644848473:AAG8tB1x79AopY0hA1zoDShJ4Z1UhNHILKo"
 bot = telebot.TeleBot(TOKEN)
 
 app = Flask(__name__)
