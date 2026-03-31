@@ -52,7 +52,7 @@ def get_phone(message):
     user_data[message.chat.id]["phone"] = message.contact.phone_number
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("Filial 1", "Filial 2")
+    markup.add("Haqqulobod", "To‘rtko‘l")
 
     bot.send_message(message.chat.id,
                      "Qaysi filialdan foydalandingiz?",
@@ -81,7 +81,6 @@ def get_rating(call):
 # STEP FLOW
 steps = [
     "reason",
-    "purchase",
     "problems",
     "suggestions",
     "competitor",
@@ -90,12 +89,12 @@ steps = [
 ]
 
 questions = [
-    "Xarid qilishingizga nima ta’sir qildi?",
-    "Qanday kamchiliklar bor?",
-    "Qanday xizmat qo‘shsak yaxshi bo‘ladi?",
-    "Boshqa supermarketga ketishingizga nima sabab bo‘ladi?",
+    "Bizni tanlashingizga asosiy sabab nima?",
+    "Xizmatimizda sizga yoqmagan jihatlar bormi?",
+    "Qaysi jihatlarni yaxshilasak, siz bizdan ko‘proq foydalanar edingiz?",
+    "Ba’zida boshqa supermarketni tanlashingizga nima sabab bo‘ladi?",
     "0 dan 10 gacha baholang (tavsiya qilish)",
-    "Nega shunday baho berdingiz?"
+    "Qo‘shimcha fikringiz bo‘lsa yozing"
 ]
 
 @bot.message_handler(func=lambda m: m.chat.id in user_data and "rating" in user_data[m.chat.id])
