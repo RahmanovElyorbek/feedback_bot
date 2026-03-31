@@ -3,8 +3,11 @@ from flask import Flask, request
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
+from telebot import types
+import os
+import json
 
-TOKEN = "8644848473:AAG8tB1x79AopY0hA1zoDShJ4Z1UhNHILKo"
+TOKEN = "SIZNING_TOKEN"
 bot = telebot.TeleBot(TOKEN)
 
 app = Flask(__name__)
@@ -13,26 +16,31 @@ app = Flask(__name__)
 scope = ["https://spreadsheets.google.com/feeds",
          "https://www.googleapis.com/auth/drive"]
 
-import os
-import json
-
 creds_dict = json.loads(os.getenv("GOOGLE_CREDS"))
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 
 client = gspread.authorize(creds)
+sheet = client.open_by_key("1ghegwU8QA-JiARIMuFyiBAHyZGDw2238krqNhukzCrU").sheet1
+
 user_data = {}
 
 # START
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.send_message(message.chat.id, "Assalomu alaykum! 😊\nIsmingizni yozing:")
     user_data[message.chat.id] = {}
+
+    bot.send_message(message.chat.id, "Assalomu alaykum! 😊\nIsmingizni yozing:")
 
 # NAME
 @bot.message_handler(func=lambda m: m.chat.id in user_data and "name" not in user_data[m.chat.id])
 def get_name(message):
     user_data[message.chat.id]["name"] = message.text
-    bot.send_message(message.chat.id, "Telefon raqamingizni yuboring:")
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    btn = types.KeyboardButton("📞 Raqamni yuborish", request_contact=True)
+    markup.add(btn)
+
+    bot.send_message(message.chat.id, "Telefon raqamingizni yuboring:", reply_markup=markup)
 
 # CONTACT
 @bot.message_handler(content_types=['contact'])
@@ -74,5 +82,5 @@ def index():
 
 if __name__ == "__main__":
     bot.remove_webhook()
-    bot.set_webhook(url="https://YOUR-RENDER-URL.onrender.com/" + TOKEN)
+    bot.set_webhook(url="https://feedback-bot.onrender.com/" + TOKEN)
     app.run(host="0.0.0.0", port=10000)
