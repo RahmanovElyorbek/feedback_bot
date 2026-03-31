@@ -10,8 +10,8 @@ import json
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     raise ValueError("BOT_TOKEN topilmadi!")
-bot = telebot.TeleBot(TOKEN)
 
+bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
 # Google Sheets
@@ -30,8 +30,8 @@ user_data = {}
 @bot.message_handler(commands=['start'])
 def start(message):
     user_data[message.chat.id] = {}
-
-    bot.send_message(message.chat.id, "Assalomu alaykum! 😊\nIsmingizni yozing:")
+    bot.send_message(message.chat.id,
+                     "Assalomu alaykum! 😊\nIsmingizni yozing:")
 
 # NAME
 @bot.message_handler(func=lambda m: m.chat.id in user_data and "name" not in user_data[m.chat.id])
@@ -42,33 +42,100 @@ def get_name(message):
     btn = types.KeyboardButton("📞 Raqamni yuborish", request_contact=True)
     markup.add(btn)
 
-    bot.send_message(message.chat.id, "Telefon raqamingizni yuboring:", reply_markup=markup)
+    bot.send_message(message.chat.id,
+                     "Telefon raqamingizni yuboring:",
+                     reply_markup=markup)
 
-# CONTACT
+# PHONE
 @bot.message_handler(content_types=['contact'])
 def get_phone(message):
     user_data[message.chat.id]["phone"] = message.contact.phone_number
-    bot.send_message(message.chat.id, "Xizmatni 1-5 baholang:")
 
-# MESSAGE FLOW
-@bot.message_handler(func=lambda m: m.chat.id in user_data)
-def flow(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("Filial 1", "Filial 2")
+
+    bot.send_message(message.chat.id,
+                     "Qaysi filialdan foydalandingiz?",
+                     reply_markup=markup)
+
+# BRANCH
+@bot.message_handler(func=lambda m: m.chat.id in user_data and "branch" not in user_data[m.chat.id])
+def get_branch(message):
+    user_data[message.chat.id]["branch"] = message.text
+
+    markup = types.InlineKeyboardMarkup()
+    for i in range(1, 6):
+        markup.add(types.InlineKeyboardButton(f"⭐ {i}", callback_data=f"rate_{i}"))
+
+    bot.send_message(message.chat.id,
+                     "Xizmatimizni baholang:",
+                     reply_markup=markup)
+
+# RATING
+@bot.callback_query_handler(func=lambda call: call.data.startswith("rate_"))
+def get_rating(call):
+    user_data[call.message.chat.id]["rating"] = call.data.split("_")[1]
+    bot.send_message(call.message.chat.id,
+                     "Nima sababdan bizni tanlaysiz?")
+
+# STEP FLOW
+steps = [
+    "reason",
+    "purchase",
+    "problems",
+    "suggestions",
+    "competitor",
+    "nps",
+    "comment"
+]
+
+questions = [
+    "Xarid qilishingizga nima ta’sir qildi?",
+    "Qanday kamchiliklar bor?",
+    "Qanday xizmat qo‘shsak yaxshi bo‘ladi?",
+    "Boshqa supermarketga ketishingizga nima sabab bo‘ladi?",
+    "0 dan 10 gacha baholang (tavsiya qilish)",
+    "Nega shunday baho berdingiz?"
+]
+
+@bot.message_handler(func=lambda m: m.chat.id in user_data and "rating" in user_data[m.chat.id])
+def process_steps(message):
     data = user_data[message.chat.id]
 
-    if "rating" not in data:
-        data["rating"] = message.text
-        bot.send_message(message.chat.id, "Izoh yozing:")
-    else:
-        sheet.append_row([
-            message.chat.id,
-            data.get("name"),
-            data.get("phone"),
-            data.get("rating"),
-            message.text,
-            datetime.now().strftime("%Y-%m-%d %H:%M")
-        ])
-        bot.send_message(message.chat.id, "Rahmat 🙏")
-        user_data.pop(message.chat.id)
+    for step in steps:
+        if step not in data:
+            data[step] = message.text
+            index = steps.index(step)
+
+            if index < len(questions):
+                bot.send_message(message.chat.id, questions[index])
+            else:
+                save_data(message.chat.id)
+            return
+
+def save_data(chat_id):
+    data = user_data[chat_id]
+
+    sheet.append_row([
+        chat_id,
+        data.get("name"),
+        data.get("phone"),
+        data.get("branch"),
+        data.get("rating"),
+        data.get("reason"),
+        data.get("purchase"),
+        data.get("problems"),
+        data.get("suggestions"),
+        data.get("competitor"),
+        data.get("nps"),
+        data.get("comment"),
+        datetime.now().strftime("%Y-%m-%d %H:%M")
+    ])
+
+    bot.send_message(chat_id,
+                     "Rahmat! Sizning fikringiz biz uchun juda muhim 🙏")
+
+    user_data.pop(chat_id)
 
 # WEBHOOK
 @app.route(f"/{TOKEN}", methods=["POST"])
