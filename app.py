@@ -82,19 +82,13 @@ def get_rating(call):
 steps = [
     "reason",
     "problems",
-    "suggestions",
-    "competitor",
-    "nps",
-    "comment"
+    "suggestions"
 ]
 
 questions = [
     "Bizni tanlashingizga asosiy sabab nima?",
     "Xizmatimizda sizga yoqmagan jihatlar bormi?",
-    "Qaysi jihatlarni yaxshilasak, siz bizdan ko‘proq foydalanar edingiz?",
-    "Ba’zida boshqa supermarketni tanlashingizga nima sabab bo‘ladi?",
-    "0 dan 10 gacha baholang (tavsiya qilish)",
-    "Qo‘shimcha fikringiz bo‘lsa yozing"
+    "Nimalarni yaxshilasak, siz bizdan ko‘proq foydalanar edingiz?"
 ]
 
 @bot.message_handler(func=lambda m: m.chat.id in user_data and "rating" in user_data[m.chat.id])
@@ -115,20 +109,16 @@ def save_data(chat_id):
     data = user_data[chat_id]
 
     sheet.append_row([
-        chat_id,
-        data.get("name"),
-        data.get("phone"),
-        data.get("branch"),
-        data.get("rating"),
-        data.get("reason"),
-        data.get("purchase"),
-        data.get("problems"),
-        data.get("suggestions"),
-        data.get("competitor"),
-        data.get("nps"),
-        data.get("comment"),
-        datetime.now().strftime("%Y-%m-%d %H:%M")
-    ])
+    chat_id,
+    data.get("name"),
+    data.get("phone"),
+    data.get("branch"),
+    data.get("rating"),
+    data.get("reason"),
+    data.get("problems"),
+    data.get("suggestions"),
+    datetime.now().strftime("%Y-%m-%d %H:%M")
+])
 
     bot.send_message(chat_id,
                      "Rahmat! Sizning fikringiz biz uchun juda muhim 🙏")
