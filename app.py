@@ -92,15 +92,33 @@ def process_steps(message):
             else:
                 bot.send_message(message.chat.id, questions[i+1])
             return
+@bot.message_handler(func=lambda m: m.chat.id in user_data and user_data[m.chat.id].get("waiting_problem"))
+def get_low_rating_problem(message):
+    chat_id = message.chat.id
+
+    user_data[chat_id]["low_rating_comment"] = message.text
+    user_data[chat_id]["waiting_problem"] = False
+
+    save_data(chat_id)
 
 # RATING
 @bot.callback_query_handler(func=lambda call: call.data.startswith("rate_"))
 def get_rating(call):
-    user_data[call.message.chat.id]["rating"] = call.data.split("_")[1]
+    chat_id = call.message.chat.id
+    rating = int(call.data.split("_")[1])
+
+    user_data[chat_id]["rating"] = rating
 
     bot.answer_callback_query(call.id)
 
-    save_data(call.message.chat.id)
+    if rating <= 2:
+        bot.send_message(
+            chat_id,
+            "❗ Siz past baho berdingiz. Iltimos, muammoni yozing — biz yaxshilaymiz 🙏"
+        )
+        user_data[chat_id]["waiting_problem"] = True
+    else:
+        save_data(chat_id)
 
 # SAVE DATA
 def save_data(chat_id):
@@ -115,22 +133,14 @@ def save_data(chat_id):
         data.get("reason"),
         data.get("problems"),
         data.get("suggestions"),
+        data.get("low_rating_comment"),
         datetime.now().strftime("%Y-%m-%d %H:%M")
     ])
 
-    # 1️⃣ AVVAL PAST BAHO TEKSHIRUV
-    if data.get("rating") and int(data.get("rating")) <= 2:
-        bot.send_message(
-            chat_id,
-            "❗ Siz past baho berdingiz. Iltimos, muammoni yozing — biz yaxshilaymiz 🙏"
-        )
-
-    # 2️⃣ KEYIN RAHMAT
+    # faqat RAHMAT qoldiramiz
     bot.send_message(chat_id, "Rahmat! Sizning fikringiz biz uchun juda muhim 🙏")
 
-    # 3️⃣ ENG OXIRI
     user_data.pop(chat_id)
-
 # WEBHOOK
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
