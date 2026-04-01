@@ -72,11 +72,14 @@ def get_branch(message):
                      reply_markup=markup)
 
 # RATING
+# RATING
 @bot.callback_query_handler(func=lambda call: call.data.startswith("rate_"))
 def get_rating(call):
     user_data[call.message.chat.id]["rating"] = call.data.split("_")[1]
-    bot.send_message(call.message.chat.id,
-                     "Nima sababdan bizni tanlaysiz?")
+
+    bot.answer_callback_query(call.id)
+
+    bot.send_message(call.message.chat.id, questions[0])
 
 # STEP FLOW
 steps = [
