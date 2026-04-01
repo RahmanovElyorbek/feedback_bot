@@ -102,11 +102,10 @@ def process_steps(message):
         if step not in data:
             data[step] = message.text
 
-            # agar oxirgi savol bo‘lsa
             if i == len(steps) - 1:
                 save_data(message.chat.id)
             else:
-                bot.send_message(message.chat.id, questions[i])
+                bot.send_message(message.chat.id, questions[i+1])
             return
 def save_data(chat_id):
     data = user_data[chat_id]
