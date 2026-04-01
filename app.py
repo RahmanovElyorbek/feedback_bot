@@ -62,7 +62,7 @@ def get_phone(message):
     # 📱 Telefonni standart ko‘rinishga keltiramiz
     phone = message.contact.phone_number.replace(" ", "").replace("-", "")
 
-    # 🔒 CHECK (oldin ishlatganmi)
+    # 🔒 CHECK
     try:
         existing_phone = sheet.findall(phone)
         existing_id = sheet.findall(str(chat_id))
@@ -74,9 +74,15 @@ def get_phone(message):
     except Exception as e:
         print("Check error:", e)
 
-    # saqlash
+    # ✅ SAQLASH (ICHIDA BO‘LISHI SHART)
     user_data[chat_id]["phone"] = phone
 
+    # 🎁 SKIDKA
+    bot.send_message(chat_id, "🎁 Rahmat! Sizga 2% chegirma berildi")
+
+    bot.send_message(chat_id, "Agar vaqtingiz bo‘lsa, qisqa savollarga javob berib ketsangiz, sizning fikringiz biz uchun juda muhim 🙏")
+
+    # 👉 KEYIN FILIAL
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("Haqqulobod", "To‘rtko‘l")
 
