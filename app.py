@@ -118,14 +118,17 @@ def save_data(chat_id):
         datetime.now().strftime("%Y-%m-%d %H:%M")
     ])
 
-    bot.send_message(chat_id, "Rahmat! Sizning fikringiz biz uchun juda muhim 🙏")
-
-    if int(data.get("rating")) <= 2:
+    # 1️⃣ AVVAL PAST BAHO TEKSHIRUV
+    if data.get("rating") and int(data.get("rating")) <= 2:
         bot.send_message(
             chat_id,
             "❗ Siz past baho berdingiz. Iltimos, muammoni yozing — biz yaxshilaymiz 🙏"
         )
 
+    # 2️⃣ KEYIN RAHMAT
+    bot.send_message(chat_id, "Rahmat! Sizning fikringiz biz uchun juda muhim 🙏")
+
+    # 3️⃣ ENG OXIRI
     user_data.pop(chat_id)
 
 # WEBHOOK
