@@ -57,13 +57,30 @@ def get_name(message):
 # PHONE
 @bot.message_handler(content_types=['contact'])
 def get_phone(message):
-    user_data[message.chat.id]["phone"] = message.contact.phone_number
+    chat_id = message.chat.id
+
+    # 📱 Telefonni standart ko‘rinishga keltiramiz
+    phone = message.contact.phone_number.replace(" ", "").replace("-", "")
+
+    # 🔒 CHECK (oldin ishlatganmi)
+    try:
+        existing_phone = sheet.findall(phone)
+        existing_id = sheet.findall(str(chat_id))
+
+        if existing_phone or existing_id:
+            bot.send_message(chat_id, "Siz allaqachon ishtirok etgansiz 🙏")
+            user_data.pop(chat_id, None)
+            return
+    except Exception as e:
+        print("Check error:", e)
+
+    # saqlash
+    user_data[chat_id]["phone"] = phone
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("Haqqulobod", "To‘rtko‘l")
 
-    bot.send_message(message.chat.id, "Qaysi filialdan foydalandingiz?", reply_markup=markup)
-
+    bot.send_message(chat_id, "Qaysi filialdan foydalandingiz?", reply_markup=markup)
 # BRANCH
 @bot.message_handler(func=lambda m: m.chat.id in user_data and "branch" not in user_data[m.chat.id])
 def get_branch(message):
