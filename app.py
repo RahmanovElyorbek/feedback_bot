@@ -120,6 +120,12 @@ def save_data(chat_id):
 
     bot.send_message(chat_id, "Rahmat! Sizning fikringiz biz uchun juda muhim 🙏")
 
+    if int(data.get("rating")) <= 2:
+        bot.send_message(
+            chat_id,
+            "❗ Siz past baho berdingiz. Iltimos, muammoni yozing — biz yaxshilaymiz 🙏"
+        )
+
     user_data.pop(chat_id)
 
 # WEBHOOK
