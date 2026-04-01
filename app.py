@@ -7,6 +7,7 @@ from telebot import types
 import os
 import json
 
+# TOKEN
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     raise ValueError("BOT_TOKEN topilmadi!")
@@ -14,7 +15,7 @@ if not TOKEN:
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# Google Sheets
+# GOOGLE SHEETS
 scope = ["https://spreadsheets.google.com/feeds",
          "https://www.googleapis.com/auth/drive"]
 
@@ -24,14 +25,23 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
 sheet = client.open_by_key("1ghegwU8QA-JiARIMuFyiBAHyZGDw2238krqNhukzCrU").sheet1
 
+# DATA
 user_data = {}
+
+# SAVOLLAR
+steps = ["reason", "problems", "suggestions"]
+
+questions = [
+    "Bizni tanlashingizga asosiy sabab nima?",
+    "Xizmatimizda sizga yoqmagan jihatlar bormi?",
+    "Nimalarni yaxshilasak, siz bizdan ko‘proq foydalanar edingiz?"
+]
 
 # START
 @bot.message_handler(commands=['start'])
 def start(message):
     user_data[message.chat.id] = {}
-    bot.send_message(message.chat.id,
-                     "Assalomu alaykum! 😊\nIsmingizni yozing:")
+    bot.send_message(message.chat.id, "Assalomu alaykum! 😊\nIsmingizni yozing:")
 
 # NAME
 @bot.message_handler(func=lambda m: m.chat.id in user_data and "name" not in user_data[m.chat.id])
@@ -42,9 +52,7 @@ def get_name(message):
     btn = types.KeyboardButton("📞 Raqamni yuborish", request_contact=True)
     markup.add(btn)
 
-    bot.send_message(message.chat.id,
-                     "Telefon raqamingizni yuboring:",
-                     reply_markup=markup)
+    bot.send_message(message.chat.id, "Telefon raqamingizni yuboring:", reply_markup=markup)
 
 # PHONE
 @bot.message_handler(content_types=['contact'])
@@ -54,47 +62,17 @@ def get_phone(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("Haqqulobod", "To‘rtko‘l")
 
-    bot.send_message(message.chat.id,
-                     "Qaysi filialdan foydalandingiz?",
-                     reply_markup=markup)
+    bot.send_message(message.chat.id, "Qaysi filialdan foydalandingiz?", reply_markup=markup)
 
 # BRANCH
 @bot.message_handler(func=lambda m: m.chat.id in user_data and "branch" not in user_data[m.chat.id])
 def get_branch(message):
     user_data[message.chat.id]["branch"] = message.text
 
-    markup = types.InlineKeyboardMarkup()
-    for i in range(1, 6):
-        markup.add(types.InlineKeyboardButton(f"⭐ {i}", callback_data=f"rate_{i}"))
+    bot.send_message(message.chat.id, questions[0])
 
-    bot.send_message(message.chat.id,
-                     "Xizmatimizni baholang:",
-                     reply_markup=markup)
-
-# RATING
-# RATING
-@bot.callback_query_handler(func=lambda call: call.data.startswith("rate_"))
-def get_rating(call):
-    user_data[call.message.chat.id]["rating"] = call.data.split("_")[1]
-
-    bot.answer_callback_query(call.id)
-
-    bot.send_message(call.message.chat.id, questions[0])
-
-# STEP FLOW
-steps = [
-    "reason",
-    "problems",
-    "suggestions"
-]
-
-questions = [
-    "Bizni tanlashingizga asosiy sabab nima?",
-    "Xizmatimizda sizga yoqmagan jihatlar bormi?",
-    "Nimalarni yaxshilasak, siz bizdan ko‘proq foydalanar edingiz?"
-]
-
-@bot.message_handler(func=lambda m: m.chat.id in user_data and "rating" in user_data[m.chat.id])
+# QUESTIONS FLOW
+@bot.message_handler(func=lambda m: m.chat.id in user_data and "branch" in user_data[m.chat.id] and "rating" not in user_data[m.chat.id])
 def process_steps(message):
     data = user_data[message.chat.id]
 
@@ -103,27 +81,44 @@ def process_steps(message):
             data[step] = message.text
 
             if i == len(steps) - 1:
-                save_data(message.chat.id)
+                # barcha savollar tugadi → rating
+                markup = types.InlineKeyboardMarkup()
+                for j in range(1, 6):
+                    markup.add(types.InlineKeyboardButton(f"⭐ {j}", callback_data=f"rate_{j}"))
+
+                bot.send_message(message.chat.id,
+                                 "Xizmatimizni baholang:",
+                                 reply_markup=markup)
             else:
                 bot.send_message(message.chat.id, questions[i+1])
             return
+
+# RATING
+@bot.callback_query_handler(func=lambda call: call.data.startswith("rate_"))
+def get_rating(call):
+    user_data[call.message.chat.id]["rating"] = call.data.split("_")[1]
+
+    bot.answer_callback_query(call.id)
+
+    save_data(call.message.chat.id)
+
+# SAVE DATA
 def save_data(chat_id):
     data = user_data[chat_id]
 
     sheet.append_row([
-    chat_id,
-    data.get("name"),
-    data.get("phone"),
-    data.get("branch"),
-    data.get("rating"),
-    data.get("reason"),
-    data.get("problems"),
-    data.get("suggestions"),
-    datetime.now().strftime("%Y-%m-%d %H:%M")
-])
+        chat_id,
+        data.get("name"),
+        data.get("phone"),
+        data.get("branch"),
+        data.get("rating"),
+        data.get("reason"),
+        data.get("problems"),
+        data.get("suggestions"),
+        datetime.now().strftime("%Y-%m-%d %H:%M")
+    ])
 
-    bot.send_message(chat_id,
-                     "Rahmat! Sizning fikringiz biz uchun juda muhim 🙏")
+    bot.send_message(chat_id, "Rahmat! Sizning fikringiz biz uchun juda muhim 🙏")
 
     user_data.pop(chat_id)
 
