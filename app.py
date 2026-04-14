@@ -191,7 +191,7 @@ def instagram(message):
 
 @bot.message_handler(func=lambda m: m.text == "📢 Telegram")
 def telegram(message):
-    bot.send_message(message.chat.id, "https://t.me/YOUR_CHANNEL")
+    bot.send_message(message.chat.id, "https://t.me/sharqsupermarketi")
 
 # ================= WEBHOOK =================
 @app.route(f"/{TOKEN}", methods=["POST"])
