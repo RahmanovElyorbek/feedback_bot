@@ -1,3 +1,4 @@
+
 import telebot
 from flask import Flask, request
 import gspread
@@ -25,125 +26,126 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
 sheet = client.open_by_key("1ghegwU8QA-JiARIMuFyiBAHyZGDw2238krqNhukzCrU").sheet1
 
-# DATA
 user_data = {}
 
-# SAVOLLAR
-steps = ["reason", "problems", "suggestions"]
+# ================= MENU =================
+def main_menu(chat_id):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("🎁 Skidkani tekshirish", "📝 Feedback")
+    markup.add("📸 Instagram", "📢 Telegram")
 
-questions = [
-    "Bizni tanlashingizga asosiy sabab nima?",
-    "Xizmatimizda sizga yoqmagan jihatlar bormi?",
-    "Nimalarni yaxshilasak, siz bizdan ko‘proq foydalanar edingiz?"
-]
+    bot.send_message(chat_id, "Kerakli bo‘limni tanlang 👇", reply_markup=markup)
 
-# START
+# ================= START =================
 @bot.message_handler(commands=['start'])
 def start(message):
-    user_data[message.chat.id] = {}
-    bot.send_message(message.chat.id, "Assalomu alaykum! 😊\nIsmingizni yozing:")
+    chat_id = message.chat.id
 
-# NAME
+    try:
+        result = sheet.findall(str(chat_id))
+
+        if result:
+            main_menu(chat_id)
+        else:
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            btn = types.KeyboardButton("📞 Raqamni yuborish", request_contact=True)
+            markup.add(btn)
+
+            bot.send_message(chat_id, "Telefon raqamingizni yuboring:", reply_markup=markup)
+
+    except:
+        bot.send_message(chat_id, "Xatolik yuz berdi")
+
+# ================= PHONE =================
+@bot.message_handler(content_types=['contact'])
+def get_phone(message):
+    chat_id = message.chat.id
+    phone = message.contact.phone_number.replace(" ", "").replace("-", "")
+
+    try:
+        existing = sheet.findall(phone)
+
+        if existing:
+            bot.send_message(chat_id, "Siz allaqachon skidka olgansiz 🎁")
+            main_menu(chat_id)
+            return
+    except:
+        pass
+
+    user_data[chat_id] = {"phone": phone}
+
+    bot.send_message(chat_id, "🎁 Sizga 2% chegirma berildi!")
+
+    bot.send_message(chat_id,
+                     "Agar vaqtingiz bo‘lsa, qisqa savollarga javob berib ketsangiz, sizning fikringiz biz uchun juda muhim 🙏")
+
+    bot.send_message(chat_id, "Ismingizni yozing:")
+
+# ================= FEEDBACK =================
 @bot.message_handler(func=lambda m: m.chat.id in user_data and "name" not in user_data[m.chat.id])
 def get_name(message):
     user_data[message.chat.id]["name"] = message.text
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    btn = types.KeyboardButton("📞 Raqamni yuborish", request_contact=True)
-    markup.add(btn)
-
-    bot.send_message(message.chat.id, "Telefon raqamingizni yuboring:", reply_markup=markup)
-
-# PHONE
-@bot.message_handler(content_types=['contact'])
-def get_phone(message):
-    chat_id = message.chat.id
-
-    # 📱 Telefonni standart ko‘rinishga keltiramiz
-    phone = message.contact.phone_number.replace(" ", "").replace("-", "")
-
-    # 🔒 CHECK
-    try:
-        existing_phone = sheet.findall(phone)
-        existing_id = sheet.findall(str(chat_id))
-
-        if existing_phone or existing_id:
-            bot.send_message(chat_id, "Siz allaqachon ishtirok etgansiz 🙏")
-            user_data.pop(chat_id, None)
-            return
-    except Exception as e:
-        print("Check error:", e)
-
-    # ✅ SAQLASH (ICHIDA BO‘LISHI SHART)
-    user_data[chat_id]["phone"] = phone
-
-    # 🎁 SKIDKA
-    bot.send_message(chat_id, "🎁 Rahmat! Sizga 2% chegirma berildi")
-
-    bot.send_message(chat_id, "Agar vaqtingiz bo‘lsa, qisqa savollarga javob berib ketsangiz, sizning fikringiz biz uchun juda muhim 🙏")
-
-    # 👉 KEYIN FILIAL
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("Haqqulobod", "To‘rtko‘l")
 
-    bot.send_message(chat_id, "Qaysi filialdan foydalandingiz?", reply_markup=markup)
-# BRANCH
+    bot.send_message(message.chat.id, "Qaysi filialdan foydalandingiz?", reply_markup=markup)
+
 @bot.message_handler(func=lambda m: m.chat.id in user_data and "branch" not in user_data[m.chat.id])
 def get_branch(message):
     user_data[message.chat.id]["branch"] = message.text
+    bot.send_message(message.chat.id, "Bizni tanlashingizga asosiy sabab nima?")
 
-    bot.send_message(message.chat.id, questions[0])
+steps = ["reason", "problems", "suggestions"]
 
-# QUESTIONS FLOW
+questions = [
+    "Xizmatimizda sizga yoqmagan jihatlar bormi?",
+    "Nimalarni yaxshilasak, siz bizdan ko‘proq foydalanar edingiz?"
+]
+
 @bot.message_handler(func=lambda m: m.chat.id in user_data and "branch" in user_data[m.chat.id] and "rating" not in user_data[m.chat.id])
 def process_steps(message):
     data = user_data[message.chat.id]
 
-    for i, step in enumerate(steps):
-        if step not in data:
-            data[step] = message.text
+    if "reason" not in data:
+        data["reason"] = message.text
+        bot.send_message(message.chat.id, questions[0])
+    elif "problems" not in data:
+        data["problems"] = message.text
+        bot.send_message(message.chat.id, questions[1])
+    elif "suggestions" not in data:
+        data["suggestions"] = message.text
 
-            if i == len(steps) - 1:
-                # barcha savollar tugadi → rating
-                markup = types.InlineKeyboardMarkup()
-                for j in range(1, 6):
-                    markup.add(types.InlineKeyboardButton(f"⭐ {j}", callback_data=f"rate_{j}"))
+        markup = types.InlineKeyboardMarkup()
+        for i in range(1, 6):
+            markup.add(types.InlineKeyboardButton(f"⭐ {i}", callback_data=f"rate_{i}"))
 
-                bot.send_message(message.chat.id,
-                                 "Xizmatimizni baholang:",
-                                 reply_markup=markup)
-            else:
-                bot.send_message(message.chat.id, questions[i+1])
-            return
+        bot.send_message(message.chat.id, "Xizmatimizni baholang:", reply_markup=markup)
+
+# ================= LOW RATING =================
 @bot.message_handler(func=lambda m: m.chat.id in user_data and user_data[m.chat.id].get("waiting_problem"))
-def get_low_rating_problem(message):
+def low_rating(message):
     chat_id = message.chat.id
-
     user_data[chat_id]["low_rating_comment"] = message.text
     user_data[chat_id]["waiting_problem"] = False
-
     save_data(chat_id)
 
-# RATING
+# ================= RATING =================
 @bot.callback_query_handler(func=lambda call: call.data.startswith("rate_"))
 def get_rating(call):
     chat_id = call.message.chat.id
     rating = int(call.data.split("_")[1])
 
     user_data[chat_id]["rating"] = rating
-
     bot.answer_callback_query(call.id)
 
     if rating <= 2:
-        bot.send_message(
-            chat_id,
-            "❗ Siz past baho berdingiz. Iltimos, muammoni yozing — biz yaxshilaymiz 🙏"
-        )
+        bot.send_message(chat_id, "❗ Muammoni yozing:")
         user_data[chat_id]["waiting_problem"] = True
     else:
         save_data(chat_id)
 
-# SAVE DATA
+# ================= SAVE =================
 def save_data(chat_id):
     data = user_data[chat_id]
 
@@ -160,11 +162,38 @@ def save_data(chat_id):
         datetime.now().strftime("%Y-%m-%d %H:%M")
     ])
 
-    # faqat RAHMAT qoldiramiz
-    bot.send_message(chat_id, "Rahmat! Sizning fikringiz biz uchun juda muhim 🙏")
-
+    bot.send_message(chat_id, "Rahmat! 🙏")
     user_data.pop(chat_id)
-# WEBHOOK
+    main_menu(chat_id)
+
+# ================= MENU BUTTONS =================
+@bot.message_handler(func=lambda m: m.text == "🎁 Skidkani tekshirish")
+def check_discount(message):
+    chat_id = message.chat.id
+
+    try:
+        result = sheet.findall(str(chat_id))
+        if result:
+            bot.send_message(chat_id, "✅ Siz skidkadan foydalangansiz")
+        else:
+            bot.send_message(chat_id, "❌ Siz hali skidka olmadingiz")
+    except:
+        bot.send_message(chat_id, "Xatolik yuz berdi")
+
+@bot.message_handler(func=lambda m: m.text == "📝 Feedback")
+def feedback_menu(message):
+    user_data[message.chat.id] = {}
+    bot.send_message(message.chat.id, "Ismingizni yozing:")
+
+@bot.message_handler(func=lambda m: m.text == "📸 Instagram")
+def instagram(message):
+    bot.send_message(message.chat.id, "https://instagram.com/YOUR_PAGE")
+
+@bot.message_handler(func=lambda m: m.text == "📢 Telegram")
+def telegram(message):
+    bot.send_message(message.chat.id, "https://t.me/YOUR_CHANNEL")
+
+# ================= WEBHOOK =================
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     json_str = request.get_data().decode('UTF-8')
