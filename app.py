@@ -31,7 +31,7 @@ user_data = {}
 # ================= MENU =================
 def main_menu(chat_id):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("🎁 Skidkani tekshirish", "📝 Feedback")
+    markup.add("🎁 Skidkani tekshirish", "📝 Fikr qoldirish ")
     markup.add("📸 Instagram", "📢 Telegram")
 
     bot.send_message(chat_id, "Kerakli bo‘limni tanlang 👇", reply_markup=markup)
@@ -180,7 +180,7 @@ def check_discount(message):
     except:
         bot.send_message(chat_id, "Xatolik yuz berdi")
 
-@bot.message_handler(func=lambda m: m.text == "📝 Feedback")
+@bot.message_handler(func=lambda m: m.text == "📝 Fikr qoldirish")
 def feedback_menu(message):
     user_data[message.chat.id] = {}
     bot.send_message(message.chat.id, "Ismingizni yozing:")
