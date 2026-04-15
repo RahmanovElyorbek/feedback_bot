@@ -187,7 +187,7 @@ def feedback_menu(message):
 
 @bot.message_handler(func=lambda m: m.text == "📸 Instagram")
 def instagram(message):
-    bot.send_message(message.chat.id, "https://instagram.com/YOUR_PAGE")
+    bot.send_message(message.chat.id, "https://instagram.com/sharq.supermarketi")
 
 @bot.message_handler(func=lambda m: m.text == "📢 Telegram")
 def telegram(message):
