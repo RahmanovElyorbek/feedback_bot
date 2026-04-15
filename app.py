@@ -103,7 +103,7 @@ def ai_chat(message):
 bot.send_message(chat_id, reply)
 
     # 3 ta message bo‘lsa save
-    if len(user_data[chat_id]["messages"]) >= 3:
+         if len(user_data[chat_id]["messages"]) >= 3:
         save_data(chat_id)
 # ================= SAVE =================
 def save_data(chat_id):
