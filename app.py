@@ -7,6 +7,9 @@ from datetime import datetime
 from telebot import types
 import os
 import json
+from openai import OpenAI
+
+client_ai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # TOKEN
 TOKEN = os.getenv("BOT_TOKEN")
@@ -145,9 +148,42 @@ def get_rating(call):
     else:
         save_data(chat_id)
 
+def analyze_feedback(data):
+    user_text = f"""
+    Name: {data.get("name")}
+    Branch: {data.get("branch")}
+    Reason: {data.get("reason")}
+    Problems: {data.get("problems")}
+    Suggestions: {data.get("suggestions")}
+    Rating: {data.get("rating")}
+    """
+
+    response = client_ai.chat.completions.create(
+        model="gpt-5.3",
+        messages=[
+            {"role": "system", "content": """
+You are an AI Business Analyst and CRM Manager for a supermarket.
+
+Analyze customer feedback and return JSON:
+response_to_customer, sentiment, issue, root_cause,
+business_recommendations, crm_action, customer_segment, priority_level
+"""},
+            {"role": "user", "content": user_text}
+        ],
+        temperature=0.3
+    )
+
+    return response.choices[0].message.content
+
 # ================= SAVE =================
 def save_data(chat_id):
     data = user_data[chat_id]
+
+    try:
+        ai_result = analyze_feedback(data)
+        parsed = json.loads(ai_result)
+    except:
+        parsed = {}
 
     sheet.append_row([
         chat_id,
@@ -159,13 +195,23 @@ def save_data(chat_id):
         data.get("problems"),
         data.get("suggestions"),
         data.get("low_rating_comment"),
-        datetime.now().strftime("%Y-%m-%d %H:%M")
+        datetime.now().strftime("%Y-%m-%d %H:%M"),
+
+        # AI DATA
+        parsed.get("sentiment"),
+        parsed.get("issue"),
+        parsed.get("root_cause"),
+        parsed.get("customer_segment"),
+        parsed.get("priority_level"),
+        parsed.get("crm_action")
     ])
+
+    if parsed.get("response_to_customer"):
+        bot.send_message(chat_id, parsed.get("response_to_customer"))
 
     bot.send_message(chat_id, "Rahmat! 🙏")
     user_data.pop(chat_id)
     main_menu(chat_id)
-
 # ================= MENU BUTTONS =================
 @bot.message_handler(func=lambda m: m.text == "🎁 Skidkani tekshirish")
 def check_discount(message):
