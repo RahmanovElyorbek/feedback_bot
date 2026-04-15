@@ -105,7 +105,7 @@ def ai_chat(message):
 
     # ❗ MUHIM: bu ham tashqarida
     if len(user_data[chat_id]["messages"]) >= 5 or "tamom" in text.lower():
-    save_data(chat_id)
+         save_data(chat_id)
 # ================= SAVE =================
 def save_data(chat_id):
     data = user_data[chat_id]
