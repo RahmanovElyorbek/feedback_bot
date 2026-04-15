@@ -100,10 +100,11 @@ def ai_chat(message):
         print("AI ERROR:", e)
         reply = "Rahmat fikringiz uchun!"
 
-bot.send_message(chat_id, reply)
+    # ❗ MUHIM: bu try/except dan tashqarida
+    bot.send_message(chat_id, reply)
 
-    # 3 ta message bo‘lsa save
-         if len(user_data[chat_id]["messages"]) >= 3:
+    # ❗ MUHIM: bu ham tashqarida
+    if len(user_data[chat_id]["messages"]) >= 3:
         save_data(chat_id)
 # ================= SAVE =================
 def save_data(chat_id):
