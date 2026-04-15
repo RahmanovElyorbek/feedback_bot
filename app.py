@@ -1,4 +1,3 @@
-
 import telebot
 from flask import Flask, request
 import gspread
@@ -13,9 +12,6 @@ client_ai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # TOKEN
 TOKEN = os.getenv("BOT_TOKEN")
-if not TOKEN:
-    raise ValueError("BOT_TOKEN topilmadi!")
-
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
@@ -34,9 +30,7 @@ user_data = {}
 # ================= MENU =================
 def main_menu(chat_id):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("🎁 Skidkani tekshirish", "📝 Fikr qoldirish ")
-    markup.add("📸 Instagram", "📢 Telegram")
-
+    markup.add("🎁 Skidkani tekshirish", "📝 Fikr qoldirish")
     bot.send_message(chat_id, "Kerakli bo‘limni tanlang 👇", reply_markup=markup)
 
 # ================= START =================
@@ -44,200 +38,110 @@ def main_menu(chat_id):
 def start(message):
     chat_id = message.chat.id
 
-    try:
-        result = sheet.findall(str(chat_id))
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    btn = types.KeyboardButton("📞 Raqamni yuborish", request_contact=True)
+    markup.add(btn)
 
-        if result:
-            main_menu(chat_id)
-        else:
-            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            btn = types.KeyboardButton("📞 Raqamni yuborish", request_contact=True)
-            markup.add(btn)
-
-            bot.send_message(chat_id, "Telefon raqamingizni yuboring:", reply_markup=markup)
-
-    except:
-        bot.send_message(chat_id, "Xatolik yuz berdi")
+    bot.send_message(chat_id, "Telefon raqamingizni yuboring:", reply_markup=markup)
 
 # ================= PHONE =================
 @bot.message_handler(content_types=['contact'])
 def get_phone(message):
     chat_id = message.chat.id
-    phone = message.contact.phone_number.replace(" ", "").replace("-", "")
+    phone = message.contact.phone_number
 
-    try:
-        existing = sheet.findall(phone)
-
-        if existing:
-            bot.send_message(chat_id, "Siz allaqachon skidka olgansiz 🎁")
-            main_menu(chat_id)
-            return
-    except:
-        pass
-
-    user_data[chat_id] = {"phone": phone}
+    user_data[chat_id] = {
+        "phone": phone,
+        "messages": []
+    }
 
     bot.send_message(chat_id, "🎁 Sizga 2% chegirma berildi!")
 
     bot.send_message(chat_id,
-                     "Agar vaqtingiz bo‘lsa, qisqa savollarga javob berib ketsangiz, sizning fikringiz biz uchun juda muhim 🙏")
+        "🤖 Salom! Men Sharq AI man.\n\nBizning supermarketimiz haqida o‘z fikrlaringizni yozing. Siz bilan suhbatlashib, xizmatimizni yaxshilaymiz 🙌")
 
-    bot.send_message(chat_id, "Ismingizni yozing:")
+# ================= AI FUNCTION =================
+def analyze_feedback(history):
+    prompt = f"""
+You are Sharq AI, a friendly assistant of a supermarket.
 
-# ================= FEEDBACK =================
-@bot.message_handler(func=lambda m: m.chat.id in user_data and "name" not in user_data[m.chat.id])
-def get_name(message):
-    user_data[message.chat.id]["name"] = message.text
+Conversation:
+{history}
 
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("Haqqulobod", "To‘rtko‘l")
+Your job:
+- Talk naturally
+- Ask questions
+- Collect feedback
 
-    bot.send_message(message.chat.id, "Qaysi filialdan foydalandingiz?", reply_markup=markup)
-
-@bot.message_handler(func=lambda m: m.chat.id in user_data and "branch" not in user_data[m.chat.id])
-def get_branch(message):
-    user_data[message.chat.id]["branch"] = message.text
-    bot.send_message(message.chat.id, "Bizni tanlashingizga asosiy sabab nima?")
-
-steps = ["reason", "problems", "suggestions"]
-
-questions = [
-    "Xizmatimizda sizga yoqmagan jihatlar bormi?",
-    "Nimalarni yaxshilasak, siz bizdan ko‘proq foydalanar edingiz?"
-]
-
-@bot.message_handler(func=lambda m: m.chat.id in user_data and "branch" in user_data[m.chat.id] and "rating" not in user_data[m.chat.id])
-def process_steps(message):
-    data = user_data[message.chat.id]
-
-    if "reason" not in data:
-        data["reason"] = message.text
-        bot.send_message(message.chat.id, questions[0])
-    elif "problems" not in data:
-        data["problems"] = message.text
-        bot.send_message(message.chat.id, questions[1])
-    elif "suggestions" not in data:
-        data["suggestions"] = message.text
-
-        markup = types.InlineKeyboardMarkup()
-        for i in range(1, 6):
-            markup.add(types.InlineKeyboardButton(f"⭐ {i}", callback_data=f"rate_{i}"))
-
-        bot.send_message(message.chat.id, "Xizmatimizni baholang:", reply_markup=markup)
-
-# ================= LOW RATING =================
-@bot.message_handler(func=lambda m: m.chat.id in user_data and user_data[m.chat.id].get("waiting_problem"))
-def low_rating(message):
-    chat_id = message.chat.id
-    user_data[chat_id]["low_rating_comment"] = message.text
-    user_data[chat_id]["waiting_problem"] = False
-    save_data(chat_id)
-
-# ================= RATING =================
-@bot.callback_query_handler(func=lambda call: call.data.startswith("rate_"))
-def get_rating(call):
-    chat_id = call.message.chat.id
-    rating = int(call.data.split("_")[1])
-
-    user_data[chat_id]["rating"] = rating
-    bot.answer_callback_query(call.id)
-
-    if rating <= 2:
-        bot.send_message(chat_id, "❗ Muammoni yozing:")
-        user_data[chat_id]["waiting_problem"] = True
-    else:
-        save_data(chat_id)
-
-def analyze_feedback(data):
-    user_text = f"""
-    Name: {data.get("name")}
-    Branch: {data.get("branch")}
-    Reason: {data.get("reason")}
-    Problems: {data.get("problems")}
-    Suggestions: {data.get("suggestions")}
-    Rating: {data.get("rating")}
-    """
+Also return JSON:
+response_to_customer, sentiment, issue, crm_action
+"""
 
     response = client_ai.chat.completions.create(
         model="gpt-5.3",
-        messages=[
-            {"role": "system", "content": """
-You are an AI Business Analyst and CRM Manager for a supermarket.
-
-Analyze customer feedback and return JSON:
-response_to_customer, sentiment, issue, root_cause,
-business_recommendations, crm_action, customer_segment, priority_level
-"""},
-            {"role": "user", "content": user_text}
-        ],
-        temperature=0.3
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.5
     )
 
     return response.choices[0].message.content
+
+# ================= AI CHAT =================
+@bot.message_handler(func=lambda message: message.chat.id in user_data)
+def ai_chat(message):
+    chat_id = message.chat.id
+    text = message.text
+
+    user_data[chat_id]["messages"].append(text)
+
+    try:
+        ai_result = analyze_feedback(user_data[chat_id]["messages"])
+        parsed = json.loads(ai_result)
+        reply = parsed.get("response_to_customer", "Rahmat!")
+    except:
+        reply = "Rahmat fikringiz uchun!"
+
+    bot.send_message(chat_id, reply)
+
+    # 3 ta message bo‘lsa save
+    if len(user_data[chat_id]["messages"]) >= 3:
+        save_data(chat_id)
 
 # ================= SAVE =================
 def save_data(chat_id):
     data = user_data[chat_id]
 
+    text_all = " | ".join(data.get("messages", []))
+
     try:
-        ai_result = analyze_feedback(data)
+        ai_result = analyze_feedback(text_all)
         parsed = json.loads(ai_result)
     except:
         parsed = {}
 
     sheet.append_row([
         chat_id,
-        data.get("name"),
         data.get("phone"),
-        data.get("branch"),
-        data.get("rating"),
-        data.get("reason"),
-        data.get("problems"),
-        data.get("suggestions"),
-        data.get("low_rating_comment"),
+        text_all,
         datetime.now().strftime("%Y-%m-%d %H:%M"),
-
-        # AI DATA
         parsed.get("sentiment"),
         parsed.get("issue"),
-        parsed.get("root_cause"),
-        parsed.get("customer_segment"),
-        parsed.get("priority_level"),
         parsed.get("crm_action")
     ])
 
-    if parsed.get("response_to_customer"):
-        bot.send_message(chat_id, parsed.get("response_to_customer"))
-
-    bot.send_message(chat_id, "Rahmat! 🙏")
+    bot.send_message(chat_id, "Rahmat! Sizning fikringiz saqlandi 🙌")
     user_data.pop(chat_id)
     main_menu(chat_id)
-# ================= MENU BUTTONS =================
+
+# ================= MENU =================
 @bot.message_handler(func=lambda m: m.text == "🎁 Skidkani tekshirish")
 def check_discount(message):
-    chat_id = message.chat.id
-
-    try:
-        result = sheet.findall(str(chat_id))
-        if result:
-            bot.send_message(chat_id, "✅ Siz skidkadan foydalangansiz")
-        else:
-            bot.send_message(chat_id, "❌ Siz hali skidka olmadingiz")
-    except:
-        bot.send_message(chat_id, "Xatolik yuz berdi")
+    bot.send_message(message.chat.id, "Sizga skidka berilgan ✅")
 
 @bot.message_handler(func=lambda m: m.text == "📝 Fikr qoldirish")
-def feedback_menu(message):
-    user_data[message.chat.id] = {}
-    bot.send_message(message.chat.id, "Ismingizni yozing:")
-
-@bot.message_handler(func=lambda m: m.text == "📸 Instagram")
-def instagram(message):
-    bot.send_message(message.chat.id, "https://instagram.com/sharq.supermarketi")
-
-@bot.message_handler(func=lambda m: m.text == "📢 Telegram")
-def telegram(message):
-    bot.send_message(message.chat.id, "https://t.me/sharqsupermarketi")
+def feedback(message):
+    user_data[message.chat.id] = {"messages": []}
+    bot.send_message(message.chat.id,
+        "🤖 Yana fikringizni yozing, men tinglayapman 👇")
 
 # ================= WEBHOOK =================
 @app.route(f"/{TOKEN}", methods=["POST"])
