@@ -68,13 +68,13 @@ You are Sharq AI, a friendly assistant of a supermarket.
 Conversation:
 {history}
 
-Your job:
-- Talk naturally
-- Ask questions
-- Collect feedback
+Talk naturally like a human:
+- Respond to user
+- Ask follow-up questions
+- Be friendly
 
-Also return JSON:
-response_to_customer, sentiment, issue, crm_action
+DO NOT return JSON.
+Just write normal message.
 """
 
     response = client_ai.chat.completions.create(
@@ -95,17 +95,16 @@ def ai_chat(message):
 
     try:
         ai_result = analyze_feedback(user_data[chat_id]["messages"])
-        parsed = json.loads(ai_result)
-        reply = parsed.get("response_to_customer", "Rahmat!")
-    except:
+        reply = ai_result.strip()
+    except Exception as e:
+        print("AI ERROR:", e)
         reply = "Rahmat fikringiz uchun!"
 
-    bot.send_message(chat_id, reply)
+bot.send_message(chat_id, reply)
 
     # 3 ta message bo‘lsa save
     if len(user_data[chat_id]["messages"]) >= 3:
         save_data(chat_id)
-
 # ================= SAVE =================
 def save_data(chat_id):
     data = user_data[chat_id]
