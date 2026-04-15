@@ -111,18 +111,16 @@ def ai_chat(message):
     user_data[chat_id]["messages"].append(text)
 
     try:
-    ai_result = analyze_feedback(user_data[chat_id]["messages"])
-    print("AI RESULT:", ai_result)   # 👈 SHUNI QO‘SHING
-    reply = ai_result.strip()
-except Exception as e:
-    print("AI ERROR:", e)            # 👈 BU HAM BOR
-    reply = "Rahmat fikringiz uchun!"
-    # ❗ MUHIM: bu try/except dan tashqarida
+        ai_result = analyze_feedback(user_data[chat_id]["messages"])
+        reply = ai_result.strip()
+    except Exception as e:
+        print("AI ERROR:", e)
+        reply = "Rahmat fikringiz uchun!"
+
     bot.send_message(chat_id, reply)
 
-    # ❗ MUHIM: bu ham tashqarida
     if len(user_data[chat_id]["messages"]) >= 5 or "tamom" in text.lower():
-         save_data(chat_id)
+        save_data(chat_id)
 # ================= SAVE =================
 def save_data(chat_id):
     data = user_data[chat_id]
