@@ -88,24 +88,16 @@ If customer says "narx qimmat":
 If customer says "navbat uzun":
 → ask: qaysi vaqtda ko‘proq?
 
-If customer says "hammasi yaxshi":
-→ ask: yana nimani yaxshilashimiz mumkin?
-
-Your job:
-- continue conversation
-- ask questions
-- collect detailed feedback
-
 IMPORTANT:
-- Never end conversation in 1 message
-- Always keep talking
-
-Now respond to the last user message:
+- Always continue conversation
 """
 
     response = client_ai.chat.completions.create(
         model="gpt-5.3",
-        messages=[{"role": "user", "content": prompt}],
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": prompt}
+        ],
         temperature=0.7
     )
 
@@ -119,12 +111,12 @@ def ai_chat(message):
     user_data[chat_id]["messages"].append(text)
 
     try:
-        ai_result = analyze_feedback(user_data[chat_id]["messages"])
-        reply = ai_result.strip()
-    except Exception as e:
-        print("AI ERROR:", e)
-        reply = "Rahmat fikringiz uchun!"
-
+    ai_result = analyze_feedback(user_data[chat_id]["messages"])
+    print("AI RESULT:", ai_result)   # 👈 SHUNI QO‘SHING
+    reply = ai_result.strip()
+except Exception as e:
+    print("AI ERROR:", e)            # 👈 BU HAM BOR
+    reply = "Rahmat fikringiz uchun!"
     # ❗ MUHIM: bu try/except dan tashqarida
     bot.send_message(chat_id, reply)
 
