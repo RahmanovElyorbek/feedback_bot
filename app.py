@@ -62,34 +62,33 @@ def get_phone(message):
 
 # ================= AI FUNCTION =================
 def analyze_feedback(history):
-    prompt = f"""
-You are Sharq AI — a smart and friendly assistant of a supermarket.
+    is_first = len(history) == 1
 
-Your goal is to deeply understand customer feedback and continue the conversation like a real human.
+    prompt = f"""
+You are Sharq AI — supermarket yordamchisi.
 
 Conversation:
 {history}
 
-Instructions:
-- Always respond in Uzbek language
-- Be friendly and natural
-- DO NOT finish conversation quickly
-- DO NOT just say "rahmat"
-- Always ask at least 1 follow-up question
-- Try to understand the problem deeper
+Greeting rule:
+- First message: {"YES" if is_first else "NO"}
 
-If customer complains:
-- Show empathy
-- Ask specific questions
+Rules:
+- Faqat o‘zbek tilida yoz
+- Juda qisqa yoz (1-2 gap)
+- Doim 1 ta savol ber
+- Takrorlamagin
 
-If customer says "narx qimmat":
-→ ask: qaysi mahsulotlarda?
+If First message = YES:
+→ "Salom" bilan boshlagin
 
-If customer says "navbat uzun":
-→ ask: qaysi vaqtda ko‘proq?
+If First message = NO:
+→ "Salom" yozma
 
 IMPORTANT:
-- Always continue conversation
+- Har doim savol bilan tugat
+
+Javob ber:
 """
 
     response = client_ai.chat.completions.create(
@@ -119,7 +118,7 @@ def ai_chat(message):
 
     bot.send_message(chat_id, reply)
 
-    if len(user_data[chat_id]["messages"]) >= 5 or "tamom" in text.lower():
+    if len(user_data[chat_id]["messages"]) >= 3 or "tamom" in text.lower():
         save_data(chat_id)
 # ================= SAVE =================
 def save_data(chat_id):
@@ -134,7 +133,7 @@ def save_data(chat_id):
         datetime.now().strftime("%Y-%m-%d %H:%M")
     ])
 
-    bot.send_message(chat_id, "Rahmat! Sizning fikringiz saqlandi 🙌")
+    bot.send_message(chat_id, "Yozib oldim 👍 Rahmat!")
     user_data.pop(chat_id)
     main_menu(chat_id)
 
