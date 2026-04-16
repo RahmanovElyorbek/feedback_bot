@@ -93,9 +93,8 @@ IMPORTANT:
 """
 
     response = client_ai.chat.completions.create(
-        model="gpt-5.3",
+        model="gpt-4.1-mini",
         messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": prompt}
         ],
         temperature=0.7
@@ -113,6 +112,7 @@ def ai_chat(message):
     try:
         ai_result = analyze_feedback(user_data[chat_id]["messages"])
         reply = ai_result.strip()
+        print("AI RESULT:", ai_result)
     except Exception as e:
         print("AI ERROR:", e)
         reply = "Rahmat fikringiz uchun!"
@@ -127,20 +127,11 @@ def save_data(chat_id):
 
     text_all = " | ".join(data.get("messages", []))
 
-    try:
-        ai_result = analyze_feedback(text_all)
-        parsed = json.loads(ai_result)
-    except:
-        parsed = {}
-
     sheet.append_row([
         chat_id,
         data.get("phone"),
         text_all,
-        datetime.now().strftime("%Y-%m-%d %H:%M"),
-        parsed.get("sentiment"),
-        parsed.get("issue"),
-        parsed.get("crm_action")
+        datetime.now().strftime("%Y-%m-%d %H:%M")
     ])
 
     bot.send_message(chat_id, "Rahmat! Sizning fikringiz saqlandi 🙌")
