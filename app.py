@@ -1,4 +1,4 @@
-import telebot
+Uimport telebot
 from flask import Flask, request
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -64,7 +64,9 @@ def get_phone(message):
 def analyze_feedback(history):
     is_first = len(history) == 1
 
-    prompt = f"""
+    
+    response = client_ai.chat.completions.create(
+        model="gptprompt = f"""
 You are Sharq AI — supermarket yordamchisi.
 
 Conversation:
@@ -74,54 +76,37 @@ First message: {is_first}
 
 Rules:
 - Faqat o‘zbek tilida yoz
-- Juda qisqa yoz (maks 12 ta so‘z)
+- Juda qisqa yoz (maks 10-12 so‘z)
 - 1 gap + 1 savol yoz
 - Oddiy insondek gapir
 - Rasmiy gaplar yozma
-- Takrorlamagin
 
-Greeting rule:
+Greeting:
 - Agar First message = True → "Salom" bilan boshlagin
-- Agar First message = False → "Salom" yozma
+- Aks holda → "Salom" yozma
 
-STRICT RULE:
-- "Salom" faqat 1 marta ishlatiladi
-- Qayta ishlatsang xato
+Understanding:
+- User javob bergan bo‘lsa → takrorlama
+- Oldingi gapga mos javob ber
+- Aniqlangan narsani yana so‘rama
 
-If narx desa:
-→ "Qaysi mahsulotlarda aynan?"
-
-If navbat desa:
-→ "Qaysi vaqtda ko‘proq?"
-
-If tozalik desa:
-→ "Qaysi joyda aynan muammo bor?"
-
-IMPORTANT:
-- Har doim savol bilan tugat
-
-UNDERSTANDING RULE:
-- Agar mijoz aniq javob bergan bo‘lsa, qayta so‘rama
-- Savolni takrorlama
-- Oldingi javobni tushunib keyingi savolni ber
-
-BAD EXAMPLE:
-User: "ishdan qaytish vaqtida"
-AI: "ishdan keyinmi?" ❌
-
-GOOD:
-User: "ishdan qaytish vaqtida"
-AI: "tushundim 👍 odatda kechqurun nechta kassa ishlaydi?"
-
-- Userni asabiy qiladigan savollar bermagin
-- Har javob oldingi gapga mos bo‘lsin
-
+Flow:
 - Agar user aniq gapirsa → chuqurlashtir
 - Agar umumiy gapirsa → aniqlashtir
+
+Examples:
+User: "non bo‘limida"
+AI: "tushundim 👍 bu tez-tez bo‘ladimi?"
+
+User: "ishdan keyin"
+AI: "tushundim 👍 o‘sha payt nechta kassa ishlaydi?"
+
+IMPORTANT:
+- Har doim yangi savol ber
+- Bir xil savolni qaytarmagin
+
 Javob ber:
-"""
-    response = client_ai.chat.completions.create(
-        model="gpt-4.1-mini",
+"""-4.1-mini",
         messages=[
             {"role": "user", "content": prompt}
         ],
@@ -159,19 +144,21 @@ def ai_chat(message):
 def save_data(chat_id):
     data = user_data[chat_id]
 
-    text_all = " | ".join(data.get("messages", []))
+    messages = data.get("messages", [])
 
-    sheet.append_row([
+    row = [
         chat_id,
         data.get("phone"),
-        text_all,
         datetime.now().strftime("%Y-%m-%d %H:%M")
-    ])
+    ]
+
+    row.extend(messages)
+
+    sheet.append_row(row)
 
     bot.send_message(chat_id, "Yozib oldim 👍 Rahmat!")
     user_data.pop(chat_id)
     main_menu(chat_id)
-
 # ================= MENU =================
 @bot.message_handler(func=lambda m: m.text == "🎁 Skidkani tekshirish")
 def check_discount(message):
