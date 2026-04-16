@@ -67,7 +67,7 @@ def analyze_feedback(history):
     
     response = client_ai.chat.completions.create(
         model="gptprompt = f"""
-You are Sharq AI — supermarket yordamchisi.
+You are Sharq AI - supermarket yordamchisi.
 
 Conversation:
 {history}
