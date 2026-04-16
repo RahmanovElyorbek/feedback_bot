@@ -6,9 +6,6 @@ from datetime import datetime
 from telebot import types
 import os
 import json
-from openai import OpenAI
-
-client_ai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
@@ -26,140 +23,85 @@ sheet = client.open_by_key("1ghegwU8QA-JiARIMuFyiBAHyZGDw2238krqNhukzCrU").sheet
 
 user_data = {}
 
-# ================= MENU =================
-def main_menu(chat_id):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("🎁 Skidkani tekshirish", "📝 Fikr qoldirish")
-    bot.send_message(chat_id, "Kerakli bolimni tanlang 👇", reply_markup=markup)
-
 # ================= START =================
 @bot.message_handler(commands=['start'])
 def start(message):
-    chat_id = message.chat.id
-
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    btn = types.KeyboardButton("📞 Raqamni yuborish", request_contact=True)
+    btn = types.KeyboardButton("📞 Raqam yuborish", request_contact=True)
     markup.add(btn)
 
-    bot.send_message(chat_id, "Telefon raqamingizni yuboring:", reply_markup=markup)
+    bot.send_message(message.chat.id, "Telefon raqamingizni yuboring:", reply_markup=markup)
 
 # ================= PHONE =================
 @bot.message_handler(content_types=['contact'])
 def get_phone(message):
     chat_id = message.chat.id
-    phone = message.contact.phone_number
 
     user_data[chat_id] = {
-        "phone": phone,
-        "messages": []
+        "phone": message.contact.phone_number
     }
 
-    bot.send_message(chat_id, "🎁 Sizga 2% chegirma berildi!")
-    bot.send_message(chat_id,
-        "🤖 Salom! Men Sharq AI man. Fikringizni yozing 👇")
+    bot.send_message(chat_id, "Ismingizni yozing:")
 
-# ================= AI FUNCTION =================
-def analyze_feedback(history):
-    is_first = len(history) == 1
+    bot.register_next_step_handler(message, get_name)
 
-    prompt = f"""
-You are Sharq AI - supermarket yordamchisi.
-
-Conversation:
-{history}
-
-First message: {is_first}
-
-Rules:
-- Faqat ozbek tilida yoz
-- Juda qisqa yoz (maks 10-12 soz)
-- 1 gap + 1 savol yoz
-- Oddiy gapir
-- Rasmiy bolma
-
-Greeting:
-- Agar First message = True bolsa Salom bilan boshlagin
-- Aks holda Salom yozma
-
-Understanding:
-- User javob bergan bolsa takrorlama
-- Oldingi gapga mos javob ber
-
-Flow:
-- Aniq gap bolsa chuqurlashtir
-- Umumiy bolsa aniqlashtir
-
-IMPORTANT:
-- Har doim yangi savol ber
-- Bir xil savolni qaytarmagin
-
-Javob ber:
-"""
-
-    response = client_ai.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7
-    )
-
-    return response.choices[0].message.content
-
-# ================= AI CHAT =================
-@bot.message_handler(func=lambda message: message.chat.id in user_data)
-def ai_chat(message):
+# ================= NAME =================
+def get_name(message):
     chat_id = message.chat.id
-    text = message.text
+    user_data[chat_id]["name"] = message.text
 
-    user_data[chat_id]["messages"].append(text)
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("Filial 1", "Filial 2", "Filial 3")
 
-    try:
-        ai_result = analyze_feedback(user_data[chat_id]["messages"])
-        reply = ai_result.strip()
-        print("AI RESULT:", reply)
-    except Exception as e:
-        print("AI ERROR:", e)
-        reply = "Rahmat fikringiz uchun!"
+    bot.send_message(chat_id, "Qaysi filial?", reply_markup=markup)
 
-    bot.send_message(chat_id, reply)
+    bot.register_next_step_handler(message, get_branch)
 
-    # AI tugatish signal
-    if "tushundim" in reply.lower():
-        save_data(chat_id)
-        return
+# ================= BRANCH =================
+def get_branch(message):
+    chat_id = message.chat.id
+    user_data[chat_id]["branch"] = message.text
 
-    # Backup
-    if len(user_data[chat_id]["messages"]) >= 6 or "tamom" in text.lower():
-        save_data(chat_id)
+    bot.send_message(chat_id, "Fikringizni yozing:")
+
+    bot.register_next_step_handler(message, get_feedback)
+
+# ================= FEEDBACK =================
+def get_feedback(message):
+    chat_id = message.chat.id
+    user_data[chat_id]["feedback"] = message.text
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("⭐1", "⭐2", "⭐3", "⭐4", "⭐5")
+
+    bot.send_message(chat_id, "Xizmatni baholang:", reply_markup=markup)
+
+    bot.register_next_step_handler(message, get_rating)
+
+# ================= RATING =================
+def get_rating(message):
+    chat_id = message.chat.id
+    user_data[chat_id]["rating"] = message.text
+
+    save_data(chat_id)
 
 # ================= SAVE =================
 def save_data(chat_id):
     data = user_data[chat_id]
 
-    messages = data.get("messages", [])
-
-    row = [
+    sheet.append_row([
         chat_id,
         data.get("phone"),
+        data.get("name"),
+        data.get("branch"),
+        data.get("feedback"),
+        data.get("rating"),
         datetime.now().strftime("%Y-%m-%d %H:%M")
-    ]
+    ])
 
-    row.extend(messages)
+    bot.send_message(chat_id, "Rahmat! Fikringiz qabul qilindi 🙌")
 
-    sheet.append_row(row)
-
-    bot.send_message(chat_id, "Yozib oldim 👍 Rahmat!")
     user_data.pop(chat_id)
-    main_menu(chat_id)
-
-# ================= MENU =================
-@bot.message_handler(func=lambda m: m.text == "🎁 Skidkani tekshirish")
-def check_discount(message):
-    bot.send_message(message.chat.id, "Sizga skidka berilgan ✅")
-
-@bot.message_handler(func=lambda m: m.text == "📝 Fikr qoldirish")
-def feedback(message):
-    user_data[message.chat.id] = {"messages": []}
-    bot.send_message(message.chat.id, "Yozing 👇")
 
 # ================= WEBHOOK =================
 @app.route(f"/{TOKEN}", methods=["POST"])
