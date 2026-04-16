@@ -100,6 +100,24 @@ If tozalik desa:
 IMPORTANT:
 - Har doim savol bilan tugat
 
+UNDERSTANDING RULE:
+- Agar mijoz aniq javob bergan bo‘lsa, qayta so‘rama
+- Savolni takrorlama
+- Oldingi javobni tushunib keyingi savolni ber
+
+BAD EXAMPLE:
+User: "ishdan qaytish vaqtida"
+AI: "ishdan keyinmi?" ❌
+
+GOOD:
+User: "ishdan qaytish vaqtida"
+AI: "tushundim 👍 odatda kechqurun nechta kassa ishlaydi?"
+
+- Userni asabiy qiladigan savollar bermagin
+- Har javob oldingi gapga mos bo‘lsin
+
+- Agar user aniq gapirsa → chuqurlashtir
+- Agar umumiy gapirsa → aniqlashtir
 Javob ber:
 """
     response = client_ai.chat.completions.create(
