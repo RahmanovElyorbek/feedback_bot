@@ -23,17 +23,15 @@ creds_dict = json.loads(os.getenv("GOOGLE_CREDS"))
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 
 client = gspread.authorize(creds)
-spreadsheet = client.open_by_key("1ghegwU8QA-JiARIMuFyiBAHyZGDw2238krqNhukzCrU")
-sheet = spreadsheet.sheet1  # mijozlar va chegirmalar
-feedback_sheet = spreadsheet.worksheet("Feedback")  # fikrlar
+sheet = client.open_by_key("1ghegwU8QA-JiARIMuFyiBAHyZGDw2238krqNhukzCrU").sheet1
 
 # ==================== KANAL LINKLARI ====================
 TELEGRAM_LINK = "https://t.me/sharqsupermarketi"
 INSTAGRAM_LINK = "https://instagram.com/sharq.supermarketi"
 
 # ==================== DATA ====================
-user_data = {}
-feedback_data = {}  # fikr qoldirish uchun alohida
+user_data = {}       # yangi ro'yxatdan o'tish uchun
+feedback_data = {}   # fikr qoldirish jarayoni uchun
 
 # ==================== SAVOL VARIANTLARI ====================
 LIKE_OPTIONS = [
@@ -87,19 +85,18 @@ def options_keyboard(options):
         markup.add(types.KeyboardButton(opt))
     return markup
 
-def check_user_exists(chat_id, phone=None):
-    """Mijoz oldin ro'yxatdan o'tganmi tekshiradi"""
+def find_user(chat_id, phone=None):
+    """Mijoz oldin ro'yxatdan o'tganmi tekshiradi (user_id yoki telefon bo'yicha)"""
     try:
-        # chat_id bo'yicha qidirish
         all_records = sheet.get_all_values()
         for row in all_records[1:]:  # 1-qator sarlavha
             if len(row) > 0 and str(row[0]) == str(chat_id):
                 return row
-            if phone and len(row) > 2 and row[2] == phone:
+            if phone and len(row) > 2 and row[2] and row[2].replace(" ", "") == phone.replace(" ", ""):
                 return row
         return None
     except Exception as e:
-        print("Check error:", e)
+        print("Find user error:", e)
         return None
 
 # ==================== START ====================
@@ -112,11 +109,11 @@ def start(message):
     feedback_data.pop(chat_id, None)
 
     # Mijoz oldin kelganmi tekshirish
-    existing = check_user_exists(chat_id)
+    existing = find_user(chat_id)
 
     if existing:
         # Mavjud mijoz — to'g'ridan-to'g'ri menyu
-        name = existing[1] if len(existing) > 1 else ""
+        name = existing[1] if len(existing) > 1 and existing[1] else "mijoz"
         bot.send_message(
             chat_id,
             f"Assalomu alaykum, {name}! 😊\n\nQuyidagi tugmalardan birini tanlang 👇",
@@ -159,12 +156,13 @@ def get_phone(message):
         phone = "+" + phone
 
     # Telefon bo'yicha tekshirish
-    existing = check_user_exists(chat_id, phone)
+    existing = find_user(chat_id, phone)
 
     if existing:
         bot.send_message(
             chat_id,
-            "Siz allaqachon ro'yxatdan o'tgansiz 🙏\nMenyuga qaytdingiz:",
+            "Siz allaqachon ro'yxatdan o'tgansiz 🙏\n"
+            "Chegirmangiz faol. Menyuga o'ting:",
             reply_markup=main_menu_keyboard()
         )
         user_data.pop(chat_id, None)
@@ -174,14 +172,23 @@ def get_phone(message):
     user_data[chat_id]["phone"] = phone
     name = user_data[chat_id].get("name", "")
 
-    # Google Sheets ga yozish
+    # Google Sheets'ga yozish (mavjud ustunlar tartibi bo'yicha):
+    # user_id | name | phone | branch | rating | reason | problems | suggestions | low_rating_comment | date | sentiment | issue | root_cause
     try:
         sheet.append_row([
-            chat_id,
-            name,
-            phone,
-            "2%",  # chegirma
-            datetime.now().strftime("%Y-%m-%d %H:%M")
+            chat_id,                                        # user_id
+            name,                                           # name
+            phone,                                          # phone
+            "",                                             # branch
+            "",                                             # rating
+            "Ro'yxatdan o'tish (2% chegirma)",             # reason
+            "",                                             # problems
+            "",                                             # suggestions
+            "",                                             # low_rating_comment
+            datetime.now().strftime("%Y-%m-%d %H:%M"),     # date
+            "",                                             # sentiment
+            "",                                             # issue
+            ""                                              # root_cause
         ])
     except Exception as e:
         print("Save error:", e)
@@ -201,12 +208,12 @@ def get_phone(message):
 @bot.message_handler(func=lambda m: m.text == "🎁 Chegirmani tekshirish")
 def check_discount(message):
     chat_id = message.chat.id
-    existing = check_user_exists(chat_id)
+    existing = find_user(chat_id)
 
     if existing:
         name = existing[1] if len(existing) > 1 else ""
         phone = existing[2] if len(existing) > 2 else ""
-        date = existing[4] if len(existing) > 4 else ""
+        date = existing[9] if len(existing) > 9 else ""
         bot.send_message(
             chat_id,
             f"✅ Sizning ma'lumotlaringiz:\n\n"
@@ -249,7 +256,7 @@ def start_feedback(message):
     chat_id = message.chat.id
 
     # Mijoz ma'lumotlarini olish
-    existing = check_user_exists(chat_id)
+    existing = find_user(chat_id)
     if existing:
         name = existing[1] if len(existing) > 1 else ""
         phone = existing[2] if len(existing) > 2 else ""
@@ -285,7 +292,7 @@ def feedback_branch(message):
         reply_markup=options_keyboard(LIKE_OPTIONS)
     )
 
-# 1-savol: yoqqan tomoni
+# 1-savol: yoqqan tomoni (reason ustuniga yoziladi)
 @bot.message_handler(func=lambda m: m.chat.id in feedback_data and feedback_data[m.chat.id].get("step") == "like")
 def feedback_like(message):
     chat_id = message.chat.id
@@ -299,8 +306,7 @@ def feedback_like(message):
             reply_markup=types.ReplyKeyboardRemove()
         )
     elif text in LIKE_OPTIONS:
-        feedback_data[chat_id]["like"] = text
-        feedback_data[chat_id]["like_custom"] = ""
+        feedback_data[chat_id]["reason"] = text
         feedback_data[chat_id]["step"] = "dislike"
         bot.send_message(
             chat_id,
@@ -314,8 +320,7 @@ def feedback_like(message):
 @bot.message_handler(func=lambda m: m.chat.id in feedback_data and feedback_data[m.chat.id].get("step") == "like_custom")
 def feedback_like_custom(message):
     chat_id = message.chat.id
-    feedback_data[chat_id]["like"] = "Boshqa"
-    feedback_data[chat_id]["like_custom"] = message.text
+    feedback_data[chat_id]["reason"] = f"Boshqa: {message.text}"
     feedback_data[chat_id]["step"] = "dislike"
     bot.send_message(
         chat_id,
@@ -325,7 +330,7 @@ def feedback_like_custom(message):
         reply_markup=options_keyboard(DISLIKE_OPTIONS)
     )
 
-# 2-savol: yoqmagan tomoni
+# 2-savol: yoqmagan tomoni (problems ustuniga yoziladi)
 @bot.message_handler(func=lambda m: m.chat.id in feedback_data and feedback_data[m.chat.id].get("step") == "dislike")
 def feedback_dislike(message):
     chat_id = message.chat.id
@@ -339,8 +344,7 @@ def feedback_dislike(message):
             reply_markup=types.ReplyKeyboardRemove()
         )
     elif text in DISLIKE_OPTIONS:
-        feedback_data[chat_id]["dislike"] = text
-        feedback_data[chat_id]["dislike_custom"] = ""
+        feedback_data[chat_id]["problems"] = text
         feedback_data[chat_id]["step"] = "wish"
         bot.send_message(
             chat_id,
@@ -354,8 +358,7 @@ def feedback_dislike(message):
 @bot.message_handler(func=lambda m: m.chat.id in feedback_data and feedback_data[m.chat.id].get("step") == "dislike_custom")
 def feedback_dislike_custom(message):
     chat_id = message.chat.id
-    feedback_data[chat_id]["dislike"] = "Boshqa"
-    feedback_data[chat_id]["dislike_custom"] = message.text
+    feedback_data[chat_id]["problems"] = f"Boshqa: {message.text}"
     feedback_data[chat_id]["step"] = "wish"
     bot.send_message(
         chat_id,
@@ -365,7 +368,7 @@ def feedback_dislike_custom(message):
         reply_markup=options_keyboard(WISH_OPTIONS)
     )
 
-# 3-savol: istak
+# 3-savol: istak (suggestions ustuniga yoziladi)
 @bot.message_handler(func=lambda m: m.chat.id in feedback_data and feedback_data[m.chat.id].get("step") == "wish")
 def feedback_wish(message):
     chat_id = message.chat.id
@@ -379,8 +382,7 @@ def feedback_wish(message):
             reply_markup=types.ReplyKeyboardRemove()
         )
     elif text in WISH_OPTIONS:
-        feedback_data[chat_id]["wish"] = text
-        feedback_data[chat_id]["wish_custom"] = ""
+        feedback_data[chat_id]["suggestions"] = text
         ask_rating(chat_id)
     else:
         bot.send_message(chat_id, "Iltimos, quyidagi variantlardan birini tanlang 👇")
@@ -388,8 +390,7 @@ def feedback_wish(message):
 @bot.message_handler(func=lambda m: m.chat.id in feedback_data and feedback_data[m.chat.id].get("step") == "wish_custom")
 def feedback_wish_custom(message):
     chat_id = message.chat.id
-    feedback_data[chat_id]["wish"] = "Boshqa"
-    feedback_data[chat_id]["wish_custom"] = message.text
+    feedback_data[chat_id]["suggestions"] = f"Boshqa: {message.text}"
     ask_rating(chat_id)
 
 def ask_rating(chat_id):
@@ -400,7 +401,7 @@ def ask_rating(chat_id):
     markup.add(*buttons)
     bot.send_message(
         chat_id,
-        "Rahmat! 🙏\n\nEnding xizmatimizni baholang:",
+        "Rahmat! 🙏\n\nEndi xizmatimizni baholang:",
         reply_markup=types.ReplyKeyboardRemove()
     )
     bot.send_message(chat_id, "Baho bering 👇", reply_markup=markup)
@@ -436,24 +437,25 @@ def get_low_rating_comment(message):
     save_feedback(chat_id)
 
 def save_feedback(chat_id):
-    """Fikrlarni Google Sheets'ga saqlash"""
+    """Fikrlarni Google Sheets'ga saqlash (mavjud ustunlar tartibi bo'yicha)"""
     data = feedback_data[chat_id]
 
+    # user_id | name | phone | branch | rating | reason | problems | suggestions | low_rating_comment | date | sentiment | issue | root_cause
     try:
-        feedback_sheet.append_row([
-            chat_id,
-            data.get("name", ""),
-            data.get("phone", ""),
-            data.get("branch", ""),
-            data.get("like", ""),
-            data.get("like_custom", ""),
-            data.get("dislike", ""),
-            data.get("dislike_custom", ""),
-            data.get("wish", ""),
-            data.get("wish_custom", ""),
-            data.get("rating", ""),
-            data.get("low_rating_comment", ""),
-            datetime.now().strftime("%Y-%m-%d %H:%M")
+        sheet.append_row([
+            chat_id,                                        # user_id
+            data.get("name", ""),                           # name
+            data.get("phone", ""),                          # phone
+            data.get("branch", ""),                         # branch
+            data.get("rating", ""),                         # rating
+            data.get("reason", ""),                         # reason (yoqqan tomoni)
+            data.get("problems", ""),                       # problems (yoqmagan tomoni)
+            data.get("suggestions", ""),                    # suggestions (istak)
+            data.get("low_rating_comment", ""),             # low_rating_comment
+            datetime.now().strftime("%Y-%m-%d %H:%M"),     # date
+            "",                                             # sentiment (AI uchun bo'sh)
+            "",                                             # issue (AI uchun bo'sh)
+            ""                                              # root_cause (AI uchun bo'sh)
         ])
     except Exception as e:
         print("Feedback save error:", e)
