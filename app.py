@@ -221,7 +221,9 @@ def check_discount(message):
             f"📞 Telefon: {phone}\n"
             f"🎁 Chegirma: 2%\n"
             f"📅 Ro'yxatdan o'tgan sana: {date}\n\n"
-            f"Chegirmangiz faol! Xaridingiz uchun rahmat 🙏",
+            f"Siz chegirmadan foydalanib bo'lgansiz.\n"
+            f"Iltimos, supermarketimiz haqidagi fikrlaringizni qoldiring. "
+            f"Sizning fikringiz biz uchun muhim 🙏",
             reply_markup=main_menu_keyboard()
         )
     else:
