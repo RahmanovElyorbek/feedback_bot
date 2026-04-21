@@ -6,6 +6,7 @@ from datetime import datetime
 from telebot import types
 import os
 import json
+import time
 
 # ==================== TOKEN ====================
 TOKEN = os.getenv("BOT_TOKEN")
@@ -29,9 +30,13 @@ sheet = client.open_by_key("1ghegwU8QA-JiARIMuFyiBAHyZGDw2238krqNhukzCrU").sheet
 TELEGRAM_LINK = "https://t.me/sharqsupermarketi"
 INSTAGRAM_LINK = "https://instagram.com/sharq.supermarketi"
 
+# ==================== ADMIN ====================
+ADMIN_ID = 8008645253
+
 # ==================== DATA ====================
-user_data = {}       # yangi ro'yxatdan o'tish uchun
-feedback_data = {}   # fikr qoldirish jarayoni uchun
+user_data = {}        # yangi ro'yxatdan o'tish uchun
+feedback_data = {}    # fikr qoldirish jarayoni uchun
+broadcast_data = {}   # broadcast jarayoni uchun
 
 # ==================== SAVOL VARIANTLARI ====================
 LIKE_OPTIONS = [
@@ -66,7 +71,6 @@ WISH_OPTIONS = [
 
 # ==================== YORDAMCHI FUNKSIYALAR ====================
 def main_menu_keyboard():
-    """4 tugmali asosiy menyu"""
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(
         types.KeyboardButton("🎁 Chegirmani tekshirish"),
@@ -79,17 +83,15 @@ def main_menu_keyboard():
     return markup
 
 def options_keyboard(options):
-    """Savol variantlari uchun klaviatura"""
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
     for opt in options:
         markup.add(types.KeyboardButton(opt))
     return markup
 
 def find_user(chat_id, phone=None):
-    """Mijoz oldin ro'yxatdan o'tganmi tekshiradi (user_id yoki telefon bo'yicha)"""
     try:
         all_records = sheet.get_all_values()
-        for row in all_records[1:]:  # 1-qator sarlavha
+        for row in all_records[1:]:
             if len(row) > 0 and str(row[0]) == str(chat_id):
                 return row
             if phone and len(row) > 2 and row[2] and row[2].replace(" ", "") == phone.replace(" ", ""):
@@ -99,20 +101,37 @@ def find_user(chat_id, phone=None):
         print("Find user error:", e)
         return None
 
+def get_all_user_ids():
+    """Sheets'dagi barcha unique user_id larni qaytaradi"""
+    try:
+        all_records = sheet.get_all_values()
+        ids = []
+        seen = set()
+        for row in all_records[1:]:
+            if row and row[0] and row[0] not in seen:
+                try:
+                    ids.append(int(row[0]))
+                    seen.add(row[0])
+                except ValueError:
+                    pass
+        return ids
+    except Exception as e:
+        print("get_all_user_ids error:", e)
+        return []
+
+def is_admin(chat_id):
+    return chat_id == ADMIN_ID
+
 # ==================== START ====================
 @bot.message_handler(commands=['start'])
 def start(message):
     chat_id = message.chat.id
-
-    # Tozalash
     user_data.pop(chat_id, None)
     feedback_data.pop(chat_id, None)
 
-    # Mijoz oldin kelganmi tekshirish
     existing = find_user(chat_id)
 
     if existing:
-        # Mavjud mijoz — to'g'ridan-to'g'ri menyu
         name = existing[1] if len(existing) > 1 and existing[1] else "mijoz"
         bot.send_message(
             chat_id,
@@ -120,7 +139,6 @@ def start(message):
             reply_markup=main_menu_keyboard()
         )
     else:
-        # Yangi mijoz — ism so'raymiz
         user_data[chat_id] = {"step": "name"}
         bot.send_message(
             chat_id,
@@ -130,7 +148,7 @@ def start(message):
             reply_markup=types.ReplyKeyboardRemove()
         )
 
-# ==================== ISM OLISH (yangi mijoz) ====================
+# ==================== ISM OLISH ====================
 @bot.message_handler(func=lambda m: m.chat.id in user_data and user_data[m.chat.id].get("step") == "name")
 def get_name(message):
     chat_id = message.chat.id
@@ -140,7 +158,6 @@ def get_name(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn = types.KeyboardButton("📞 Raqamni yuborish", request_contact=True)
     markup.add(btn)
-
     bot.send_message(chat_id, "Telefon raqamingizni yuboring:", reply_markup=markup)
 
 # ==================== TELEFON OLISH ====================
@@ -155,7 +172,6 @@ def get_phone(message):
     if not phone.startswith("+"):
         phone = "+" + phone
 
-    # Telefon bo'yicha tekshirish
     existing = find_user(chat_id, phone)
 
     if existing:
@@ -168,32 +184,28 @@ def get_phone(message):
         user_data.pop(chat_id, None)
         return
 
-    # Yangi mijoz — saqlash
     user_data[chat_id]["phone"] = phone
     name = user_data[chat_id].get("name", "")
 
-    # Google Sheets'ga yozish (mavjud ustunlar tartibi bo'yicha):
-    # user_id | name | phone | branch | rating | reason | problems | suggestions | low_rating_comment | date | sentiment | issue | root_cause
     try:
         sheet.append_row([
-            chat_id,                                        # user_id
-            name,                                           # name
-            phone,                                          # phone
-            "",                                             # branch
-            "",                                             # rating
-            "Ro'yxatdan o'tish (2% chegirma)",             # reason
-            "",                                             # problems
-            "",                                             # suggestions
-            "",                                             # low_rating_comment
-            datetime.now().strftime("%Y-%m-%d %H:%M"),     # date
-            "",                                             # sentiment
-            "",                                             # issue
-            ""                                              # root_cause
+            chat_id,
+            name,
+            phone,
+            "",
+            "",
+            "Ro'yxatdan o'tish (2% chegirma)",
+            "",
+            "",
+            "",
+            datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "",
+            "",
+            ""
         ])
     except Exception as e:
         print("Save error:", e)
 
-    # Chegirma xabari
     bot.send_message(
         chat_id,
         f"🎁 Tabriklaymiz, {name}!\n"
@@ -204,7 +216,7 @@ def get_phone(message):
 
     user_data.pop(chat_id, None)
 
-# ==================== ASOSIY MENYU TUGMALARI ====================
+# ==================== ASOSIY MENYU ====================
 @bot.message_handler(func=lambda m: m.text == "🎁 Chegirmani tekshirish")
 def check_discount(message):
     chat_id = message.chat.id
@@ -257,7 +269,6 @@ def telegram_link(message):
 def start_feedback(message):
     chat_id = message.chat.id
 
-    # Mijoz ma'lumotlarini olish
     existing = find_user(chat_id)
     if existing:
         name = existing[1] if len(existing) > 1 else ""
@@ -266,35 +277,23 @@ def start_feedback(message):
         name = ""
         phone = ""
 
-    feedback_data[chat_id] = {
-        "name": name,
-        "phone": phone,
-        "step": "branch"
-    }
+    feedback_data[chat_id] = {"name": name, "phone": phone, "step": "branch"}
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("Haqqulobod", "To'rtko'l")
-    bot.send_message(
-        chat_id,
-        "Qaysi filialdan foydalandingiz?",
-        reply_markup=markup
-    )
+    bot.send_message(chat_id, "Qaysi filialdan foydalandingiz?", reply_markup=markup)
 
-# Filial
 @bot.message_handler(func=lambda m: m.chat.id in feedback_data and feedback_data[m.chat.id].get("step") == "branch")
 def feedback_branch(message):
     chat_id = message.chat.id
     feedback_data[chat_id]["branch"] = message.text
     feedback_data[chat_id]["step"] = "like"
-
     bot.send_message(
         chat_id,
-        "1️⃣ Supermarketimizning qaysi tomoni sizga yoqadi?\n"
-        "(Quyidagilardan birini tanlang)",
+        "1️⃣ Supermarketimizning qaysi tomoni sizga yoqadi?\n(Quyidagilardan birini tanlang)",
         reply_markup=options_keyboard(LIKE_OPTIONS)
     )
 
-# 1-savol: yoqqan tomoni (reason ustuniga yoziladi)
 @bot.message_handler(func=lambda m: m.chat.id in feedback_data and feedback_data[m.chat.id].get("step") == "like")
 def feedback_like(message):
     chat_id = message.chat.id
@@ -302,18 +301,13 @@ def feedback_like(message):
 
     if text == "✍️ Boshqa (yozish)":
         feedback_data[chat_id]["step"] = "like_custom"
-        bot.send_message(
-            chat_id,
-            "O'z fikringizni yozing:",
-            reply_markup=types.ReplyKeyboardRemove()
-        )
+        bot.send_message(chat_id, "O'z fikringizni yozing:", reply_markup=types.ReplyKeyboardRemove())
     elif text in LIKE_OPTIONS:
         feedback_data[chat_id]["reason"] = text
         feedback_data[chat_id]["step"] = "dislike"
         bot.send_message(
             chat_id,
-            "2️⃣ Nima sizga yoqmadi yoki yaxshilanishi kerak?\n"
-            "(Quyidagilardan birini tanlang)",
+            "2️⃣ Nima sizga yoqmadi yoki yaxshilanishi kerak?\n(Quyidagilardan birini tanlang)",
             reply_markup=options_keyboard(DISLIKE_OPTIONS)
         )
     else:
@@ -326,13 +320,10 @@ def feedback_like_custom(message):
     feedback_data[chat_id]["step"] = "dislike"
     bot.send_message(
         chat_id,
-        "Rahmat! 🙏\n\n"
-        "2️⃣ Nima sizga yoqmadi yoki yaxshilanishi kerak?\n"
-        "(Quyidagilardan birini tanlang)",
+        "Rahmat! 🙏\n\n2️⃣ Nima sizga yoqmadi yoki yaxshilanishi kerak?\n(Quyidagilardan birini tanlang)",
         reply_markup=options_keyboard(DISLIKE_OPTIONS)
     )
 
-# 2-savol: yoqmagan tomoni (problems ustuniga yoziladi)
 @bot.message_handler(func=lambda m: m.chat.id in feedback_data and feedback_data[m.chat.id].get("step") == "dislike")
 def feedback_dislike(message):
     chat_id = message.chat.id
@@ -340,18 +331,13 @@ def feedback_dislike(message):
 
     if text == "✍️ Boshqa (yozish)":
         feedback_data[chat_id]["step"] = "dislike_custom"
-        bot.send_message(
-            chat_id,
-            "O'z fikringizni yozing:",
-            reply_markup=types.ReplyKeyboardRemove()
-        )
+        bot.send_message(chat_id, "O'z fikringizni yozing:", reply_markup=types.ReplyKeyboardRemove())
     elif text in DISLIKE_OPTIONS:
         feedback_data[chat_id]["problems"] = text
         feedback_data[chat_id]["step"] = "wish"
         bot.send_message(
             chat_id,
-            "3️⃣ Qanday yangi xizmat yoki imkoniyatlar qo'shishimizni hohlaysiz?\n"
-            "(Quyidagilardan birini tanlang)",
+            "3️⃣ Qanday yangi xizmat yoki imkoniyatlar qo'shishimizni hohlaysiz?\n(Quyidagilardan birini tanlang)",
             reply_markup=options_keyboard(WISH_OPTIONS)
         )
     else:
@@ -364,13 +350,10 @@ def feedback_dislike_custom(message):
     feedback_data[chat_id]["step"] = "wish"
     bot.send_message(
         chat_id,
-        "Rahmat! 🙏\n\n"
-        "3️⃣ Qanday yangi xizmat yoki imkoniyatlar qo'shishimizni hohlaysiz?\n"
-        "(Quyidagilardan birini tanlang)",
+        "Rahmat! 🙏\n\n3️⃣ Qanday yangi xizmat yoki imkoniyatlar qo'shishimizni hohlaysiz?\n(Quyidagilardan birini tanlang)",
         reply_markup=options_keyboard(WISH_OPTIONS)
     )
 
-# 3-savol: istak (suggestions ustuniga yoziladi)
 @bot.message_handler(func=lambda m: m.chat.id in feedback_data and feedback_data[m.chat.id].get("step") == "wish")
 def feedback_wish(message):
     chat_id = message.chat.id
@@ -378,11 +361,7 @@ def feedback_wish(message):
 
     if text == "✍️ Boshqa (yozish)":
         feedback_data[chat_id]["step"] = "wish_custom"
-        bot.send_message(
-            chat_id,
-            "O'z fikringizni yozing:",
-            reply_markup=types.ReplyKeyboardRemove()
-        )
+        bot.send_message(chat_id, "O'z fikringizni yozing:", reply_markup=types.ReplyKeyboardRemove())
     elif text in WISH_OPTIONS:
         feedback_data[chat_id]["suggestions"] = text
         ask_rating(chat_id)
@@ -396,19 +375,13 @@ def feedback_wish_custom(message):
     ask_rating(chat_id)
 
 def ask_rating(chat_id):
-    """Baholash so'raladi"""
     feedback_data[chat_id]["step"] = "rating"
     markup = types.InlineKeyboardMarkup(row_width=5)
     buttons = [types.InlineKeyboardButton(f"⭐ {j}", callback_data=f"rate_{j}") for j in range(1, 6)]
     markup.add(*buttons)
-    bot.send_message(
-        chat_id,
-        "Rahmat! 🙏\n\nEndi xizmatimizni baholang:",
-        reply_markup=types.ReplyKeyboardRemove()
-    )
+    bot.send_message(chat_id, "Rahmat! 🙏\n\nEndi xizmatimizni baholang:", reply_markup=types.ReplyKeyboardRemove())
     bot.send_message(chat_id, "Baho bering 👇", reply_markup=markup)
 
-# Baholash
 @bot.callback_query_handler(func=lambda call: call.data.startswith("rate_"))
 def get_rating(call):
     chat_id = call.message.chat.id
@@ -418,7 +391,6 @@ def get_rating(call):
 
     rating = int(call.data.split("_")[1])
     feedback_data[chat_id]["rating"] = rating
-
     bot.answer_callback_query(call.id, f"Siz {rating} yulduz berdingiz")
 
     if rating <= 2:
@@ -439,25 +411,22 @@ def get_low_rating_comment(message):
     save_feedback(chat_id)
 
 def save_feedback(chat_id):
-    """Fikrlarni Google Sheets'ga saqlash (mavjud ustunlar tartibi bo'yicha)"""
     data = feedback_data[chat_id]
-
-    # user_id | name | phone | branch | rating | reason | problems | suggestions | low_rating_comment | date | sentiment | issue | root_cause
     try:
         sheet.append_row([
-            chat_id,                                        # user_id
-            data.get("name", ""),                           # name
-            data.get("phone", ""),                          # phone
-            data.get("branch", ""),                         # branch
-            data.get("rating", ""),                         # rating
-            data.get("reason", ""),                         # reason (yoqqan tomoni)
-            data.get("problems", ""),                       # problems (yoqmagan tomoni)
-            data.get("suggestions", ""),                    # suggestions (istak)
-            data.get("low_rating_comment", ""),             # low_rating_comment
-            datetime.now().strftime("%Y-%m-%d %H:%M"),     # date
-            "",                                             # sentiment (AI uchun bo'sh)
-            "",                                             # issue (AI uchun bo'sh)
-            ""                                              # root_cause (AI uchun bo'sh)
+            chat_id,
+            data.get("name", ""),
+            data.get("phone", ""),
+            data.get("branch", ""),
+            data.get("rating", ""),
+            data.get("reason", ""),
+            data.get("problems", ""),
+            data.get("suggestions", ""),
+            data.get("low_rating_comment", ""),
+            datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "",
+            "",
+            ""
         ])
     except Exception as e:
         print("Feedback save error:", e)
@@ -469,8 +438,157 @@ def save_feedback(chat_id):
         "Xaridingiz uchun rahmat! 🛒",
         reply_markup=main_menu_keyboard()
     )
-
     feedback_data.pop(chat_id, None)
+
+
+# ==================== BROADCAST ====================
+@bot.message_handler(commands=['broadcast'])
+def broadcast_start(message):
+    chat_id = message.chat.id
+    if not is_admin(chat_id):
+        bot.send_message(chat_id, "❌ Bu buyruq faqat admin uchun!")
+        return
+
+    broadcast_data[chat_id] = {"step": "type"}
+
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton("📝 Faqat matn", callback_data="bc_type_text"),
+        types.InlineKeyboardButton("🖼 Rasm + matn", callback_data="bc_type_photo")
+    )
+    bot.send_message(
+        chat_id,
+        "📢 *Broadcast xabari*\n\nQanday formatda yuborasiz?",
+        parse_mode="Markdown",
+        reply_markup=markup
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("bc_type_"))
+def broadcast_type(call):
+    chat_id = call.message.chat.id
+    if not is_admin(chat_id):
+        return
+
+    msg_type = call.data.replace("bc_type_", "")
+    broadcast_data[chat_id]["type"] = msg_type
+    bot.answer_callback_query(call.id)
+
+    if msg_type == "photo":
+        broadcast_data[chat_id]["step"] = "photo"
+        bot.send_message(chat_id, "🖼 Rasmni yuboring:", reply_markup=types.ReplyKeyboardRemove())
+    else:
+        broadcast_data[chat_id]["step"] = "text"
+        bot.send_message(chat_id, "📝 Xabar matnini yozing:", reply_markup=types.ReplyKeyboardRemove())
+
+# Rasm qabul qilish
+@bot.message_handler(
+    content_types=['photo'],
+    func=lambda m: m.chat.id in broadcast_data and broadcast_data[m.chat.id].get("step") == "photo"
+)
+def broadcast_get_photo(message):
+    chat_id = message.chat.id
+    broadcast_data[chat_id]["photo_id"] = message.photo[-1].file_id
+    broadcast_data[chat_id]["step"] = "text"
+    bot.send_message(chat_id, "✅ Rasm qabul qilindi!\n\nEndi xabar matnini yozing (caption):")
+
+# Matn qabul qilish
+@bot.message_handler(
+    func=lambda m: m.chat.id in broadcast_data and broadcast_data[m.chat.id].get("step") == "text"
+)
+def broadcast_get_text(message):
+    chat_id = message.chat.id
+    broadcast_data[chat_id]["text"] = message.text
+    broadcast_data[chat_id]["step"] = "confirm"
+
+    # Preview ko'rsatish
+    bc = broadcast_data[chat_id]
+    preview = f"👁 *Preview:*\n\n{message.text}"
+
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton("✅ Yuborish", callback_data="bc_confirm_yes"),
+        types.InlineKeyboardButton("❌ Bekor qilish", callback_data="bc_confirm_no")
+    )
+
+    if bc.get("photo_id"):
+        bot.send_photo(
+            chat_id,
+            bc["photo_id"],
+            caption=f"👁 Preview:\n\n{message.text}",
+            reply_markup=markup
+        )
+    else:
+        bot.send_message(chat_id, preview, parse_mode="Markdown", reply_markup=markup)
+
+# Tasdiqlash
+@bot.callback_query_handler(func=lambda call: call.data.startswith("bc_confirm_"))
+def broadcast_confirm(call):
+    chat_id = call.message.chat.id
+    if not is_admin(chat_id):
+        return
+
+    bot.answer_callback_query(call.id)
+
+    if call.data == "bc_confirm_no":
+        broadcast_data.pop(chat_id, None)
+        bot.send_message(chat_id, "❌ Broadcast bekor qilindi.", reply_markup=main_menu_keyboard())
+        return
+
+    # Yuborish boshlash
+    bc = broadcast_data.get(chat_id, {})
+    text = bc.get("text", "")
+    photo_id = bc.get("photo_id")
+
+    user_ids = get_all_user_ids()
+    total = len(user_ids)
+
+    if total == 0:
+        bot.send_message(chat_id, "⚠️ Foydalanuvchilar topilmadi!")
+        broadcast_data.pop(chat_id, None)
+        return
+
+    status_msg = bot.send_message(chat_id, f"📤 Yuborilmoqda... (0/{total})")
+
+    success = 0
+    failed = 0
+
+    for i, uid in enumerate(user_ids):
+        try:
+            if photo_id:
+                bot.send_photo(uid, photo_id, caption=text)
+            else:
+                bot.send_message(uid, text)
+            success += 1
+        except Exception as e:
+            print(f"Broadcast error uid={uid}: {e}")
+            failed += 1
+
+        # Har 10 ta da progress yangilash
+        if (i + 1) % 10 == 0:
+            try:
+                bot.edit_message_text(
+                    f"📤 Yuborilmoqda... ({i+1}/{total})",
+                    chat_id,
+                    status_msg.message_id
+                )
+            except:
+                pass
+
+        time.sleep(0.05)  # Telegram limit uchun
+
+    # Yakuniy natija
+    bot.edit_message_text(
+        f"✅ *Broadcast yakunlandi!*\n\n"
+        f"👥 Jami: {total}\n"
+        f"✅ Yuborildi: {success}\n"
+        f"❌ Xato: {failed}",
+        chat_id,
+        status_msg.message_id,
+        parse_mode="Markdown"
+    )
+
+    broadcast_data.pop(chat_id, None)
+
 
 # ==================== WEBHOOK ====================
 @app.route(f"/{TOKEN}", methods=["POST"])
