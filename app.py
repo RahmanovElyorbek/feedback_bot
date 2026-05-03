@@ -30,6 +30,17 @@ sheet = client.open_by_key("1ghegwU8QA-JiARIMuFyiBAHyZGDw2238krqNhukzCrU").sheet
 TELEGRAM_LINK = "https://t.me/sharqsupermarketi"
 INSTAGRAM_LINK = "https://instagram.com/sharq.supermarketi"
 
+BRANCH_LINKS = {
+    "Haqqulobod": {
+        "telegram": "https://t.me/sharqsupermarketi",
+        "instagram": "https://instagram.com/sharq.supermarketi"
+    },
+    "To'rtko'l": {
+        "telegram": "https://t.me/sharq_marketi",
+        "instagram": "https://instagram.com/sharq_supermarketi"
+    }
+}
+
 # ==================== ADMIN ====================
 ADMIN_ID = 8008645253
 
@@ -286,8 +297,25 @@ def start_feedback(message):
 @bot.message_handler(func=lambda m: m.chat.id in feedback_data and feedback_data[m.chat.id].get("step") == "branch")
 def feedback_branch(message):
     chat_id = message.chat.id
-    feedback_data[chat_id]["branch"] = message.text
+    branch = message.text
+    feedback_data[chat_id]["branch"] = branch
     feedback_data[chat_id]["step"] = "like"
+
+    # Filial linklarini yuborish
+    links = BRANCH_LINKS.get(branch)
+    if links:
+        markup = types.InlineKeyboardMarkup()
+        markup.add(
+            types.InlineKeyboardButton("📢 Telegram kanal", url=links["telegram"]),
+            types.InlineKeyboardButton("📷 Instagram", url=links["instagram"])
+        )
+        bot.send_message(
+            chat_id,
+            f"📍 *{branch}* filiali ijtimoiy tarmoqlari:",
+            parse_mode="Markdown",
+            reply_markup=markup
+        )
+
     bot.send_message(
         chat_id,
         "1️⃣ Supermarketimizning qaysi tomoni sizga yoqadi?\n(Quyidagilardan birini tanlang)",
