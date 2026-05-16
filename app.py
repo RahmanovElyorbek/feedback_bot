@@ -45,9 +45,9 @@ BRANCH_LINKS = {
 ADMIN_ID = 8008645253
 
 # ==================== DATA ====================
-user_data = {}        # yangi ro'yxatdan o'tish uchun
-feedback_data = {}    # fikr qoldirish jarayoni uchun
-broadcast_data = {}   # broadcast jarayoni uchun
+user_data = {}
+feedback_data = {}
+broadcast_data = {}
 
 # ==================== SAVOL VARIANTLARI ====================
 LIKE_OPTIONS = [
@@ -74,7 +74,7 @@ WISH_OPTIONS = [
     "🚚 Uyga yetkazib berish",
     "📱 Mobil ilova",
     "🎁 Doimiy mijozlar uchun bonus tizimi",
-    "🍰 Pishiriqxona yoki kafe",
+    "🤝 Nasiya savdo",
     "🏪 Yangi filiallar ochilishi",
     "💳 Qulay to'lov turlari (Payme, Click)",
     "✍️ Boshqa (yozish)"
@@ -93,10 +93,18 @@ def main_menu_keyboard():
     )
     return markup
 
-def options_keyboard(options):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+def multi_select_keyboard(options, selected=None):
+    """Ko'p javob tanlash uchun inline klaviatura"""
+    if selected is None:
+        selected = []
+    markup = types.InlineKeyboardMarkup(row_width=1)
     for opt in options:
-        markup.add(types.KeyboardButton(opt))
+        if opt == "✍️ Boshqa (yozish)":
+            markup.add(types.InlineKeyboardButton(opt, callback_data=f"ms_custom"))
+        else:
+            check = "✅ " if opt in selected else ""
+            markup.add(types.InlineKeyboardButton(f"{check}{opt}", callback_data=f"ms_{opt}"))
+    markup.add(types.InlineKeyboardButton("📨 Tayyor", callback_data="ms_done"))
     return markup
 
 def find_user(chat_id, phone=None):
@@ -113,7 +121,6 @@ def find_user(chat_id, phone=None):
         return None
 
 def get_all_user_ids():
-    """Sheets'dagi barcha unique user_id larni qaytaradi"""
     try:
         all_records = sheet.get_all_values()
         ids = []
@@ -132,6 +139,28 @@ def get_all_user_ids():
 
 def is_admin(chat_id):
     return chat_id == ADMIN_ID
+
+def ask_multi_select(chat_id, step):
+    """Ko'p javob tanlash savolini yuborish"""
+    if step == "like":
+        text = "1️⃣ Supermarketimizning qaysi tomoni sizga yoqadi?\n_(Bir yoki bir nechta tanlang, keyin 📨 Tayyor bosing)_"
+        options = LIKE_OPTIONS
+    elif step == "dislike":
+        text = "2️⃣ Nima sizga yoqmadi yoki yaxshilanishi kerak?\n_(Bir yoki bir nechta tanlang, keyin 📨 Tayyor bosing)_"
+        options = DISLIKE_OPTIONS
+    else:
+        text = "3️⃣ Qanday yangi xizmat yoki imkoniyatlar qo'shishimizni hohlaysiz?\n_(Bir yoki bir nechta tanlang, keyin 📨 Tayyor bosing)_"
+        options = WISH_OPTIONS
+
+    feedback_data[chat_id]["step"] = step
+    feedback_data[chat_id][f"{step}_selected"] = []
+
+    bot.send_message(
+        chat_id,
+        text,
+        parse_mode="Markdown",
+        reply_markup=multi_select_keyboard(options, [])
+    )
 
 # ==================== START ====================
 @bot.message_handler(commands=['start'])
@@ -200,19 +229,11 @@ def get_phone(message):
 
     try:
         sheet.append_row([
-            chat_id,
-            name,
-            phone,
-            "",
-            "",
+            chat_id, name, phone, "", "",
             "Ro'yxatdan o'tish (2% chegirma)",
-            "",
-            "",
-            "",
+            "", "", "",
             datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "",
-            "",
-            ""
+            "", "", ""
         ])
     except Exception as e:
         print("Save error:", e)
@@ -224,7 +245,6 @@ def get_phone(message):
         f"Endi quyidagi imkoniyatlardan foydalanishingiz mumkin 👇",
         reply_markup=main_menu_keyboard()
     )
-
     user_data.pop(chat_id, None)
 
 # ==================== ASOSIY MENYU ====================
@@ -281,12 +301,8 @@ def start_feedback(message):
     chat_id = message.chat.id
 
     existing = find_user(chat_id)
-    if existing:
-        name = existing[1] if len(existing) > 1 else ""
-        phone = existing[2] if len(existing) > 2 else ""
-    else:
-        name = ""
-        phone = ""
+    name = existing[1] if existing and len(existing) > 1 else ""
+    phone = existing[2] if existing and len(existing) > 2 else ""
 
     feedback_data[chat_id] = {"name": name, "phone": phone, "step": "branch"}
 
@@ -294,6 +310,7 @@ def start_feedback(message):
     markup.add("Haqqulobod", "To'rtko'l")
     bot.send_message(chat_id, "Qaysi filialdan foydalandingiz?", reply_markup=markup)
 
+# Filial tanlash
 @bot.message_handler(func=lambda m: m.chat.id in feedback_data and feedback_data[m.chat.id].get("step") == "branch")
 def feedback_branch(message):
     chat_id = message.chat.id
@@ -301,7 +318,6 @@ def feedback_branch(message):
     feedback_data[chat_id]["branch"] = branch
     feedback_data[chat_id]["step"] = "like"
 
-    # Filial linklarini yuborish
     links = BRANCH_LINKS.get(branch)
     if links:
         markup = types.InlineKeyboardMarkup()
@@ -316,92 +332,103 @@ def feedback_branch(message):
             reply_markup=markup
         )
 
-    bot.send_message(
-        chat_id,
-        "1️⃣ Supermarketimizning qaysi tomoni sizga yoqadi?\n(Quyidagilardan birini tanlang)",
-        reply_markup=options_keyboard(LIKE_OPTIONS)
-    )
+    ask_multi_select(chat_id, "like")
 
-@bot.message_handler(func=lambda m: m.chat.id in feedback_data and feedback_data[m.chat.id].get("step") == "like")
-def feedback_like(message):
-    chat_id = message.chat.id
-    text = message.text
+# ==================== KO'P JAVOB TANLASH (CALLBACK) ====================
+@bot.callback_query_handler(func=lambda call: call.data.startswith("ms_"))
+def multi_select_handler(call):
+    chat_id = call.message.chat.id
 
-    if text == "✍️ Boshqa (yozish)":
-        feedback_data[chat_id]["step"] = "like_custom"
-        bot.send_message(chat_id, "O'z fikringizni yozing:", reply_markup=types.ReplyKeyboardRemove())
-    elif text in LIKE_OPTIONS:
-        feedback_data[chat_id]["reason"] = text
-        feedback_data[chat_id]["step"] = "dislike"
-        bot.send_message(
-            chat_id,
-            "2️⃣ Nima sizga yoqmadi yoki yaxshilanishi kerak?\n(Quyidagilardan birini tanlang)",
-            reply_markup=options_keyboard(DISLIKE_OPTIONS)
-        )
+    if chat_id not in feedback_data:
+        bot.answer_callback_query(call.id, "Qayta boshlang: /start")
+        return
+
+    step = feedback_data[chat_id].get("step")
+    selected_key = f"{step}_selected"
+
+    if call.data == "ms_done":
+        selected = feedback_data[chat_id].get(selected_key, [])
+
+        if not selected:
+            bot.answer_callback_query(call.id, "⚠️ Kamida bitta tanlang!", show_alert=True)
+            return
+
+        bot.answer_callback_query(call.id)
+
+        # Tanlangan javoblarni saqlash
+        feedback_data[chat_id][step_to_field(step)] = ", ".join(selected)
+
+        # Keyingi savolga o'tish
+        if step == "like":
+            ask_multi_select(chat_id, "dislike")
+        elif step == "dislike":
+            ask_multi_select(chat_id, "wish")
+        elif step == "wish":
+            ask_rating(chat_id)
+
+    elif call.data == "ms_custom":
+        bot.answer_callback_query(call.id)
+        feedback_data[chat_id]["step"] = f"{step}_custom"
+        bot.send_message(chat_id, "✍️ O'z fikringizni yozing:", reply_markup=types.ReplyKeyboardRemove())
+
     else:
-        bot.send_message(chat_id, "Iltimos, quyidagi variantlardan birini tanlang 👇")
+        # Variant tanlash/bekor qilish
+        option = call.data[3:]  # "ms_" ni olib tashlash
+        selected = feedback_data[chat_id].get(selected_key, [])
 
-@bot.message_handler(func=lambda m: m.chat.id in feedback_data and feedback_data[m.chat.id].get("step") == "like_custom")
-def feedback_like_custom(message):
+        if option in selected:
+            selected.remove(option)
+        else:
+            selected.append(option)
+
+        feedback_data[chat_id][selected_key] = selected
+
+        # Mos options ro'yxatini aniqlash
+        if step == "like":
+            options = LIKE_OPTIONS
+        elif step == "dislike":
+            options = DISLIKE_OPTIONS
+        else:
+            options = WISH_OPTIONS
+
+        # Tugmalarni yangilash
+        try:
+            bot.edit_message_reply_markup(
+                chat_id,
+                call.message.message_id,
+                reply_markup=multi_select_keyboard(options, selected)
+            )
+        except Exception as e:
+            print("Edit markup error:", e)
+
+        bot.answer_callback_query(call.id)
+
+def step_to_field(step):
+    mapping = {"like": "reason", "dislike": "problems", "wish": "suggestions"}
+    return mapping.get(step, step)
+
+# Boshqa (yozish) — matn qabul qilish
+@bot.message_handler(func=lambda m: m.chat.id in feedback_data and feedback_data[m.chat.id].get("step", "").endswith("_custom"))
+def handle_custom_text(message):
     chat_id = message.chat.id
-    feedback_data[chat_id]["reason"] = f"Boshqa: {message.text}"
-    feedback_data[chat_id]["step"] = "dislike"
-    bot.send_message(
-        chat_id,
-        "Rahmat! 🙏\n\n2️⃣ Nima sizga yoqmadi yoki yaxshilanishi kerak?\n(Quyidagilardan birini tanlang)",
-        reply_markup=options_keyboard(DISLIKE_OPTIONS)
-    )
+    step = feedback_data[chat_id]["step"].replace("_custom", "")
+    selected_key = f"{step}_selected"
 
-@bot.message_handler(func=lambda m: m.chat.id in feedback_data and feedback_data[m.chat.id].get("step") == "dislike")
-def feedback_dislike(message):
-    chat_id = message.chat.id
-    text = message.text
+    # Mavjud tanlovlarga qo'shish
+    selected = feedback_data[chat_id].get(selected_key, [])
+    selected.append(f"Boshqa: {message.text}")
+    feedback_data[chat_id][step_to_field(step)] = ", ".join(selected)
 
-    if text == "✍️ Boshqa (yozish)":
-        feedback_data[chat_id]["step"] = "dislike_custom"
-        bot.send_message(chat_id, "O'z fikringizni yozing:", reply_markup=types.ReplyKeyboardRemove())
-    elif text in DISLIKE_OPTIONS:
-        feedback_data[chat_id]["problems"] = text
-        feedback_data[chat_id]["step"] = "wish"
-        bot.send_message(
-            chat_id,
-            "3️⃣ Qanday yangi xizmat yoki imkoniyatlar qo'shishimizni hohlaysiz?\n(Quyidagilardan birini tanlang)",
-            reply_markup=options_keyboard(WISH_OPTIONS)
-        )
-    else:
-        bot.send_message(chat_id, "Iltimos, quyidagi variantlardan birini tanlang 👇")
+    bot.send_message(chat_id, "✅ Qabul qilindi! 🙏")
 
-@bot.message_handler(func=lambda m: m.chat.id in feedback_data and feedback_data[m.chat.id].get("step") == "dislike_custom")
-def feedback_dislike_custom(message):
-    chat_id = message.chat.id
-    feedback_data[chat_id]["problems"] = f"Boshqa: {message.text}"
-    feedback_data[chat_id]["step"] = "wish"
-    bot.send_message(
-        chat_id,
-        "Rahmat! 🙏\n\n3️⃣ Qanday yangi xizmat yoki imkoniyatlar qo'shishimizni hohlaysiz?\n(Quyidagilardan birini tanlang)",
-        reply_markup=options_keyboard(WISH_OPTIONS)
-    )
-
-@bot.message_handler(func=lambda m: m.chat.id in feedback_data and feedback_data[m.chat.id].get("step") == "wish")
-def feedback_wish(message):
-    chat_id = message.chat.id
-    text = message.text
-
-    if text == "✍️ Boshqa (yozish)":
-        feedback_data[chat_id]["step"] = "wish_custom"
-        bot.send_message(chat_id, "O'z fikringizni yozing:", reply_markup=types.ReplyKeyboardRemove())
-    elif text in WISH_OPTIONS:
-        feedback_data[chat_id]["suggestions"] = text
+    if step == "like":
+        ask_multi_select(chat_id, "dislike")
+    elif step == "dislike":
+        ask_multi_select(chat_id, "wish")
+    elif step == "wish":
         ask_rating(chat_id)
-    else:
-        bot.send_message(chat_id, "Iltimos, quyidagi variantlardan birini tanlang 👇")
 
-@bot.message_handler(func=lambda m: m.chat.id in feedback_data and feedback_data[m.chat.id].get("step") == "wish_custom")
-def feedback_wish_custom(message):
-    chat_id = message.chat.id
-    feedback_data[chat_id]["suggestions"] = f"Boshqa: {message.text}"
-    ask_rating(chat_id)
-
+# ==================== BAHOLASH ====================
 def ask_rating(chat_id):
     feedback_data[chat_id]["step"] = "rating"
     markup = types.InlineKeyboardMarkup(row_width=5)
@@ -452,9 +479,7 @@ def save_feedback(chat_id):
             data.get("suggestions", ""),
             data.get("low_rating_comment", ""),
             datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "",
-            "",
-            ""
+            "", "", ""
         ])
     except Exception as e:
         print("Feedback save error:", e)
@@ -508,7 +533,6 @@ def broadcast_type(call):
         broadcast_data[chat_id]["step"] = "text"
         bot.send_message(chat_id, "📝 Xabar matnini yozing:", reply_markup=types.ReplyKeyboardRemove())
 
-# Rasm qabul qilish
 @bot.message_handler(
     content_types=['photo'],
     func=lambda m: m.chat.id in broadcast_data and broadcast_data[m.chat.id].get("step") == "photo"
@@ -519,7 +543,6 @@ def broadcast_get_photo(message):
     broadcast_data[chat_id]["step"] = "text"
     bot.send_message(chat_id, "✅ Rasm qabul qilindi!\n\nEndi xabar matnini yozing (caption):")
 
-# Matn qabul qilish
 @bot.message_handler(
     func=lambda m: m.chat.id in broadcast_data and broadcast_data[m.chat.id].get("step") == "text"
 )
@@ -528,10 +551,7 @@ def broadcast_get_text(message):
     broadcast_data[chat_id]["text"] = message.text
     broadcast_data[chat_id]["step"] = "confirm"
 
-    # Preview ko'rsatish
     bc = broadcast_data[chat_id]
-    preview = f"👁 *Preview:*\n\n{message.text}"
-
     markup = types.InlineKeyboardMarkup()
     markup.add(
         types.InlineKeyboardButton("✅ Yuborish", callback_data="bc_confirm_yes"),
@@ -539,16 +559,10 @@ def broadcast_get_text(message):
     )
 
     if bc.get("photo_id"):
-        bot.send_photo(
-            chat_id,
-            bc["photo_id"],
-            caption=f"👁 Preview:\n\n{message.text}",
-            reply_markup=markup
-        )
+        bot.send_photo(chat_id, bc["photo_id"], caption=f"👁 Preview:\n\n{message.text}", reply_markup=markup)
     else:
-        bot.send_message(chat_id, preview, parse_mode="Markdown", reply_markup=markup)
+        bot.send_message(chat_id, f"👁 *Preview:*\n\n{message.text}", parse_mode="Markdown", reply_markup=markup)
 
-# Tasdiqlash
 @bot.callback_query_handler(func=lambda call: call.data.startswith("bc_confirm_"))
 def broadcast_confirm(call):
     chat_id = call.message.chat.id
@@ -562,7 +576,6 @@ def broadcast_confirm(call):
         bot.send_message(chat_id, "❌ Broadcast bekor qilindi.", reply_markup=main_menu_keyboard())
         return
 
-    # Yuborish boshlash
     bc = broadcast_data.get(chat_id, {})
     text = bc.get("text", "")
     photo_id = bc.get("photo_id")
@@ -576,7 +589,6 @@ def broadcast_confirm(call):
         return
 
     status_msg = bot.send_message(chat_id, f"📤 Yuborilmoqda... (0/{total})")
-
     success = 0
     failed = 0
 
@@ -591,20 +603,14 @@ def broadcast_confirm(call):
             print(f"Broadcast error uid={uid}: {e}")
             failed += 1
 
-        # Har 10 ta da progress yangilash
         if (i + 1) % 10 == 0:
             try:
-                bot.edit_message_text(
-                    f"📤 Yuborilmoqda... ({i+1}/{total})",
-                    chat_id,
-                    status_msg.message_id
-                )
+                bot.edit_message_text(f"📤 Yuborilmoqda... ({i+1}/{total})", chat_id, status_msg.message_id)
             except:
                 pass
 
-        time.sleep(0.05)  # Telegram limit uchun
+        time.sleep(0.05)
 
-    # Yakuniy natija
     bot.edit_message_text(
         f"✅ *Broadcast yakunlandi!*\n\n"
         f"👥 Jami: {total}\n"
@@ -614,7 +620,6 @@ def broadcast_confirm(call):
         status_msg.message_id,
         parse_mode="Markdown"
     )
-
     broadcast_data.pop(chat_id, None)
 
 
