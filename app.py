@@ -84,7 +84,7 @@ WISH_OPTIONS = [
 def main_menu_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(
-        types.KeyboardButton("🎁 Chegirmani tekshirish"),
+        types.KeyboardButton("👤 Mening ma'lumotlarim"),
         types.KeyboardButton("💬 Fikr qoldirish")
     )
     markup.add(
@@ -218,7 +218,7 @@ def get_phone(message):
         bot.send_message(
             chat_id,
             "Siz allaqachon ro'yxatdan o'tgansiz 🙏\n"
-            "Chegirmangiz faol. Menyuga o'ting:",
+            "Menyuga o'ting:",
             reply_markup=main_menu_keyboard()
         )
         user_data.pop(chat_id, None)
@@ -230,7 +230,7 @@ def get_phone(message):
     try:
         sheet.append_row([
             chat_id, name, phone, "", "",
-            "Ro'yxatdan o'tish (2% chegirma)",
+            "Ro'yxatdan o'tish",
             "", "", "",
             datetime.now().strftime("%Y-%m-%d %H:%M"),
             "", "", ""
@@ -240,16 +240,16 @@ def get_phone(message):
 
     bot.send_message(
         chat_id,
-        f"🎁 Tabriklaymiz, {name}!\n"
-        f"Sizga 2% chegirma berildi ✅\n\n"
-        f"Endi quyidagi imkoniyatlardan foydalanishingiz mumkin 👇",
+        f"✅ Tabriklaymiz, {name}!\n"
+        f"Siz muvaffaqiyatli ro'yxatdan o'tdingiz.\n\n"
+        f"Quyidagi imkoniyatlardan foydalanishingiz mumkin 👇",
         reply_markup=main_menu_keyboard()
     )
     user_data.pop(chat_id, None)
 
 # ==================== ASOSIY MENYU ====================
-@bot.message_handler(func=lambda m: m.text == "🎁 Chegirmani tekshirish")
-def check_discount(message):
+@bot.message_handler(func=lambda m: m.text == "👤 Mening ma'lumotlarim")
+def my_info(message):
     chat_id = message.chat.id
     existing = find_user(chat_id)
 
@@ -262,9 +262,7 @@ def check_discount(message):
             f"✅ Sizning ma'lumotlaringiz:\n\n"
             f"👤 Ism: {name}\n"
             f"📞 Telefon: {phone}\n"
-            f"🎁 Chegirma: 2%\n"
             f"📅 Ro'yxatdan o'tgan sana: {date}\n\n"
-            f"Siz chegirmadan foydalanib bo'lgansiz.\n"
             f"Iltimos, supermarketimiz haqidagi fikrlaringizni qoldiring. "
             f"Sizning fikringiz biz uchun muhim 🙏",
             reply_markup=main_menu_keyboard()
@@ -273,7 +271,7 @@ def check_discount(message):
         bot.send_message(
             chat_id,
             "Siz hali ro'yxatdan o'tmagansiz.\n"
-            "Chegirma olish uchun /start bosing va ro'yxatdan o'ting 🎁",
+            "Ro'yxatdan o'tish uchun /start bosing 🙏",
             reply_markup=main_menu_keyboard()
         )
 
