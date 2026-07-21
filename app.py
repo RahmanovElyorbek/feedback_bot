@@ -51,8 +51,6 @@ aksiya_tirajlar_sheet = get_or_create_worksheet(
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai_client = openai.OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
-AKSIYA_MIN_SUMMA = 300000
-
 # ==================== KANAL LINKLARI ====================
 TELEGRAM_LINK = "https://t.me/sharqsupermarketi"
 INSTAGRAM_LINK = "https://instagram.com/sharq.supermarketi"
@@ -835,16 +833,6 @@ def aksiya_get_photo(message):
         summa = int(summa)
     except (TypeError, ValueError):
         bot.send_message(chat_id, "⚠️ Chek summasi aniqlanmadi. Rasmni aniqroq olib, qayta yuboring")
-        return
-
-    if summa < AKSIYA_MIN_SUMMA:
-        bot.send_message(
-            chat_id,
-            f"❌ Kechirasiz, aksiyada qatnashish uchun chekdagi summa {AKSIYA_MIN_SUMMA:,} so'mdan yuqori bo'lishi kerak.\n"
-            f"Sizning chekingiz: {summa:,} so'm",
-            reply_markup=main_menu_keyboard(chat_id)
-        )
-        aksiya_data.pop(chat_id, None)
         return
 
     tiraj = get_active_tiraj()
