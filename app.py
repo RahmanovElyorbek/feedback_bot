@@ -7,6 +7,9 @@ from telebot import types
 import os
 import json
 import time
+import openai
+import base64
+import re
 
 # ==================== TOKEN ====================
 TOKEN = os.getenv("BOT_TOKEN")
@@ -24,7 +27,31 @@ creds_dict = json.loads(os.getenv("GOOGLE_CREDS"))
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 
 client = gspread.authorize(creds)
-sheet = client.open_by_key("1ghegwU8QA-JiARIMuFyiBAHyZGDw2238krqNhukzCrU").sheet1
+spreadsheet = client.open_by_key("1ghegwU8QA-JiARIMuFyiBAHyZGDw2238krqNhukzCrU")
+sheet = spreadsheet.sheet1
+
+# ==================== AKSIYA: SHEETS VA OPENAI ====================
+def get_or_create_worksheet(name, headers):
+    try:
+        return spreadsheet.worksheet(name)
+    except gspread.exceptions.WorksheetNotFound:
+        ws = spreadsheet.add_worksheet(title=name, rows=1000, cols=len(headers))
+        ws.append_row(headers)
+        return ws
+
+aksiya_cheklar_sheet = get_or_create_worksheet(
+    "aksiya_cheklar",
+    ["tiraj_id", "user_id", "ism", "telefon", "chek_raqami", "summa", "rasm_fayl_id", "sana", "holat"]
+)
+aksiya_tirajlar_sheet = get_or_create_worksheet(
+    "aksiya_tirajlar",
+    ["tiraj_id", "boshlanish", "tugash", "jami_chek", "jami_summa", "goliblar_soni", "holat"]
+)
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+openai_client = openai.OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+
+AKSIYA_MIN_SUMMA = 300000
 
 # ==================== KANAL LINKLARI ====================
 TELEGRAM_LINK = "https://t.me/sharqsupermarketi"
@@ -48,6 +75,8 @@ ADMIN_ID = 8008645253
 user_data = {}
 feedback_data = {}
 broadcast_data = {}
+aksiya_data = {}
+aksiya_finish_data = {}
 
 # ==================== SAVOL VARIANTLARI ====================
 LIKE_OPTIONS = [
@@ -81,7 +110,7 @@ WISH_OPTIONS = [
 ]
 
 # ==================== YORDAMCHI FUNKSIYALAR ====================
-def main_menu_keyboard():
+def main_menu_keyboard(chat_id=None):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(
         types.KeyboardButton("👤 Mening ma'lumotlarim"),
@@ -91,6 +120,9 @@ def main_menu_keyboard():
         types.KeyboardButton("📷 Instagram"),
         types.KeyboardButton("📢 Telegram kanal")
     )
+    markup.add(types.KeyboardButton("🎰 Aksiyaga qatnashish"))
+    if chat_id is not None and is_admin(chat_id):
+        markup.add(types.KeyboardButton("📊 Aksiya xulosasi"))
     return markup
 
 def multi_select_keyboard(options, selected=None):
@@ -140,6 +172,117 @@ def get_all_user_ids():
 def is_admin(chat_id):
     return chat_id == ADMIN_ID
 
+# ==================== AKSIYA: YORDAMCHI FUNKSIYALAR ====================
+def create_new_tiraj():
+    """Yangi tiraj yaratish va uni faol deb belgilash"""
+    try:
+        records = aksiya_tirajlar_sheet.get_all_values()
+        existing_ids = [int(row[0]) for row in records[1:] if row and row[0].isdigit()]
+        new_id = max(existing_ids) + 1 if existing_ids else 1
+        row = [new_id, datetime.now().strftime("%Y-%m-%d %H:%M"), "", 0, 0, 0, "faol"]
+        aksiya_tirajlar_sheet.append_row(row)
+        return row
+    except Exception as e:
+        print("create_new_tiraj error:", e)
+        return None
+
+def get_active_tiraj():
+    """Faol tirajni topish, agar yo'q bo'lsa yangisini yaratish"""
+    try:
+        records = aksiya_tirajlar_sheet.get_all_values()
+        for row in records[1:]:
+            if len(row) > 6 and row[6] == "faol":
+                return row
+        return create_new_tiraj()
+    except Exception as e:
+        print("get_active_tiraj error:", e)
+        return None
+
+def get_tiraj_checks(tiraj_id):
+    """Berilgan tirajga tegishli barcha cheklarni qaytarish"""
+    try:
+        records = aksiya_cheklar_sheet.get_all_values()
+        return [row for row in records[1:] if row and str(row[0]) == str(tiraj_id)]
+    except Exception as e:
+        print("get_tiraj_checks error:", e)
+        return []
+
+def find_check_by_number(tiraj_id, chek_raqami):
+    """Shu tirajda chek raqami avval yuborilganmi tekshirish"""
+    for row in get_tiraj_checks(tiraj_id):
+        if len(row) > 4 and row[4] == str(chek_raqami):
+            return row
+    return None
+
+def save_check(tiraj_id, user_id, ism, telefon, chek_raqami, summa, file_id):
+    try:
+        aksiya_cheklar_sheet.append_row([
+            tiraj_id, user_id, ism, telefon, chek_raqami, summa, file_id,
+            datetime.now().strftime("%Y-%m-%d %H:%M"), "faol"
+        ])
+    except Exception as e:
+        print("save_check error:", e)
+
+def mark_winning_checks(tiraj_id, chek_raqami_set):
+    try:
+        records = aksiya_cheklar_sheet.get_all_values()
+        for idx, row in enumerate(records[1:], start=2):
+            if row and str(row[0]) == str(tiraj_id) and len(row) > 4 and row[4] in chek_raqami_set:
+                aksiya_cheklar_sheet.update_cell(idx, 9, "g'olib")
+    except Exception as e:
+        print("mark_winning_checks error:", e)
+
+def close_tiraj(tiraj_id, jami_chek, jami_summa, goliblar_soni):
+    try:
+        records = aksiya_tirajlar_sheet.get_all_values()
+        for idx, row in enumerate(records[1:], start=2):
+            if row and str(row[0]) == str(tiraj_id):
+                aksiya_tirajlar_sheet.update(f"A{idx}:G{idx}", [[
+                    row[0], row[1], datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    jami_chek, jami_summa, goliblar_soni, "yakunlangan"
+                ]])
+                break
+    except Exception as e:
+        print("close_tiraj error:", e)
+
+def read_check_image(file_bytes):
+    """Chek rasmidan chek raqami va summani GPT-4o Vision orqali o'qish"""
+    try:
+        base64_image = base64.b64encode(file_bytes).decode('utf-8')
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+                        },
+                        {
+                            "type": "text",
+                            "text": (
+                                "Bu o'zbek supermarket cheki. Faqat JSON formatda javob ber, "
+                                "boshqa hech narsa yozma:\n"
+                                "{\n"
+                                '  "chek_raqami": "chekdagi tartib raqami (faqat raqamlar)",\n'
+                                '  "summa": 150000\n'
+                                "}\n"
+                                "Agar chek raqami yoki summa aniqlanmasa — null yoz."
+                            )
+                        }
+                    ]
+                }
+            ],
+            max_tokens=100
+        )
+        content = response.choices[0].message.content.strip()
+        content = re.sub(r"^```(json)?|```$", "", content).strip()
+        return json.loads(content)
+    except Exception as e:
+        print("read_check_image error:", e)
+        return None
+
 def ask_multi_select(chat_id, step):
     """Ko'p javob tanlash savolini yuborish"""
     if step == "like":
@@ -176,7 +319,7 @@ def start(message):
         bot.send_message(
             chat_id,
             f"Assalomu alaykum, {name}! 😊\n\nQuyidagi tugmalardan birini tanlang 👇",
-            reply_markup=main_menu_keyboard()
+            reply_markup=main_menu_keyboard(chat_id)
         )
     else:
         user_data[chat_id] = {"step": "name"}
@@ -219,7 +362,7 @@ def get_phone(message):
             chat_id,
             "Siz allaqachon ro'yxatdan o'tgansiz 🙏\n"
             "Menyuga o'ting:",
-            reply_markup=main_menu_keyboard()
+            reply_markup=main_menu_keyboard(chat_id)
         )
         user_data.pop(chat_id, None)
         return
@@ -243,7 +386,7 @@ def get_phone(message):
         f"✅ Tabriklaymiz, {name}!\n"
         f"Siz muvaffaqiyatli ro'yxatdan o'tdingiz.\n\n"
         f"Quyidagi imkoniyatlardan foydalanishingiz mumkin 👇",
-        reply_markup=main_menu_keyboard()
+        reply_markup=main_menu_keyboard(chat_id)
     )
     user_data.pop(chat_id, None)
 
@@ -265,32 +408,34 @@ def my_info(message):
             f"📅 Ro'yxatdan o'tgan sana: {date}\n\n"
             f"Iltimos, supermarketimiz haqidagi fikrlaringizni qoldiring. "
             f"Sizning fikringiz biz uchun muhim 🙏",
-            reply_markup=main_menu_keyboard()
+            reply_markup=main_menu_keyboard(chat_id)
         )
     else:
         bot.send_message(
             chat_id,
             "Siz hali ro'yxatdan o'tmagansiz.\n"
             "Ro'yxatdan o'tish uchun /start bosing 🙏",
-            reply_markup=main_menu_keyboard()
+            reply_markup=main_menu_keyboard(chat_id)
         )
 
 @bot.message_handler(func=lambda m: m.text == "📷 Instagram")
 def instagram_link(message):
+    chat_id = message.chat.id
     bot.send_message(
-        message.chat.id,
+        chat_id,
         f"📷 Bizning Instagram sahifamiz:\n{INSTAGRAM_LINK}\n\n"
         f"Obuna bo'ling va yangi aksiyalardan xabardor bo'ling! 🔔",
-        reply_markup=main_menu_keyboard()
+        reply_markup=main_menu_keyboard(chat_id)
     )
 
 @bot.message_handler(func=lambda m: m.text == "📢 Telegram kanal")
 def telegram_link(message):
+    chat_id = message.chat.id
     bot.send_message(
-        message.chat.id,
+        chat_id,
         f"📢 Bizning Telegram kanalimiz:\n{TELEGRAM_LINK}\n\n"
         f"Obuna bo'ling va yangiliklardan xabardor bo'ling! 🔔",
-        reply_markup=main_menu_keyboard()
+        reply_markup=main_menu_keyboard(chat_id)
     )
 
 # ==================== FIKR QOLDIRISH ====================
@@ -487,7 +632,7 @@ def save_feedback(chat_id):
         "✅ Rahmat! Sizning fikringiz biz uchun juda muhim 🙏\n"
         "Har bir fikr — bizning rivojlanishimiz uchun muhim qadam.\n\n"
         "Xaridingiz uchun rahmat! 🛒",
-        reply_markup=main_menu_keyboard()
+        reply_markup=main_menu_keyboard(chat_id)
     )
     feedback_data.pop(chat_id, None)
 
@@ -571,7 +716,7 @@ def broadcast_confirm(call):
 
     if call.data == "bc_confirm_no":
         broadcast_data.pop(chat_id, None)
-        bot.send_message(chat_id, "❌ Broadcast bekor qilindi.", reply_markup=main_menu_keyboard())
+        bot.send_message(chat_id, "❌ Broadcast bekor qilindi.", reply_markup=main_menu_keyboard(chat_id))
         return
 
     bc = broadcast_data.get(chat_id, {})
@@ -619,6 +764,354 @@ def broadcast_confirm(call):
         parse_mode="Markdown"
     )
     broadcast_data.pop(chat_id, None)
+
+
+# ==================== AKSIYA MODULI ====================
+@bot.message_handler(func=lambda m: m.text == "🎰 Aksiyaga qatnashish")
+def aksiya_start(message):
+    chat_id = message.chat.id
+
+    if not openai_client:
+        bot.send_message(
+            chat_id,
+            "⚠️ Aksiya moduli hozircha ishlamayapti. Keyinroq urinib ko'ring.",
+            reply_markup=main_menu_keyboard(chat_id)
+        )
+        return
+
+    aksiya_data[chat_id] = {"step": "aksiya_photo"}
+    bot.send_message(
+        chat_id,
+        "🎰 Aksiyaga qatnashish uchun chek rasmini yuboring.\n"
+        "❗️ Chekda ismingiz va telefon raqamingiz yozilgan bo'lishi shart.",
+        reply_markup=types.ReplyKeyboardRemove()
+    )
+
+@bot.message_handler(
+    content_types=['photo'],
+    func=lambda m: m.chat.id in aksiya_data and aksiya_data[m.chat.id].get("step") == "aksiya_photo"
+)
+def aksiya_get_photo(message):
+    chat_id = message.chat.id
+
+    if not openai_client:
+        bot.send_message(
+            chat_id,
+            "⚠️ Aksiya moduli hozircha ishlamayapti. Keyinroq urinib ko'ring.",
+            reply_markup=main_menu_keyboard(chat_id)
+        )
+        aksiya_data.pop(chat_id, None)
+        return
+
+    bot.send_message(chat_id, "⏳ Chek tekshirilmoqda...")
+
+    try:
+        file_info = bot.get_file(message.photo[-1].file_id)
+        file_bytes = bot.download_file(file_info.file_path)
+    except Exception as e:
+        print("Aksiya rasm yuklab olish xatosi:", e)
+        bot.send_message(
+            chat_id,
+            "❌ Rasmni yuklab bo'lmadi. Qaytadan urinib ko'ring.",
+            reply_markup=main_menu_keyboard(chat_id)
+        )
+        aksiya_data.pop(chat_id, None)
+        return
+
+    result = read_check_image(file_bytes)
+
+    if not result or (not result.get("chek_raqami") and result.get("summa") is None):
+        bot.send_message(chat_id, "❌ Rasm chek emas. Iltimos, chek rasmini yuboring")
+        return
+
+    chek_raqami = result.get("chek_raqami")
+    summa = result.get("summa")
+
+    if not chek_raqami:
+        bot.send_message(chat_id, "⚠️ Chek raqami aniqlanmadi. Rasmni aniqroq olib, qayta yuboring")
+        return
+
+    try:
+        summa = int(summa)
+    except (TypeError, ValueError):
+        bot.send_message(chat_id, "⚠️ Chek summasi aniqlanmadi. Rasmni aniqroq olib, qayta yuboring")
+        return
+
+    if summa < AKSIYA_MIN_SUMMA:
+        bot.send_message(
+            chat_id,
+            f"❌ Kechirasiz, aksiyada qatnashish uchun chekdagi summa {AKSIYA_MIN_SUMMA:,} so'mdan yuqori bo'lishi kerak.\n"
+            f"Sizning chekingiz: {summa:,} so'm",
+            reply_markup=main_menu_keyboard(chat_id)
+        )
+        aksiya_data.pop(chat_id, None)
+        return
+
+    tiraj = get_active_tiraj()
+    if not tiraj:
+        bot.send_message(
+            chat_id,
+            "⚠️ Hozircha faol tiraj yo'q. Keyinroq urinib ko'ring.",
+            reply_markup=main_menu_keyboard(chat_id)
+        )
+        aksiya_data.pop(chat_id, None)
+        return
+
+    tiraj_id = tiraj[0]
+
+    if find_check_by_number(tiraj_id, chek_raqami):
+        bot.send_message(
+            chat_id,
+            f"⚠️ Bu chek raqami allaqachon ro'yxatga olingan ({chek_raqami})",
+            reply_markup=main_menu_keyboard(chat_id)
+        )
+        aksiya_data.pop(chat_id, None)
+        return
+
+    existing = find_user(chat_id)
+    ism = existing[1] if existing and len(existing) > 1 and existing[1] else (message.from_user.first_name or "mijoz")
+    telefon = existing[2] if existing and len(existing) > 2 and existing[2] else ""
+
+    save_check(tiraj_id, chat_id, ism, telefon, chek_raqami, summa, message.photo[-1].file_id)
+
+    bot.send_message(
+        chat_id,
+        f"✅ Tabriklaymiz, {ism}!\n"
+        f"Chekingiz aksiyaga qabul qilindi 🎉\n\n"
+        f"📋 Chek raqami: {chek_raqami}\n"
+        f"💰 Summa: {summa:,} so'm\n"
+        f"🎰 Tiraj: #{tiraj_id}\n\n"
+        f"Tiraj kuni barcha ishtirokchilarga xabar yuboriladi.\n"
+        f"Omad tilaymiz! 🍀",
+        reply_markup=main_menu_keyboard(chat_id)
+    )
+    aksiya_data.pop(chat_id, None)
+
+# ==================== AKSIYA: TIRAJNI YAKUNLASH (ADMIN) ====================
+@bot.message_handler(commands=['aksiya_yakunla'])
+def aksiya_finish_start(message):
+    chat_id = message.chat.id
+    if not is_admin(chat_id):
+        bot.send_message(chat_id, "❌ Bu buyruq faqat admin uchun!")
+        return
+
+    tiraj = get_active_tiraj()
+    if not tiraj:
+        bot.send_message(chat_id, "⚠️ Faol tiraj topilmadi.")
+        return
+
+    tiraj_id = tiraj[0]
+    cheklar = get_tiraj_checks(tiraj_id)
+
+    if not cheklar:
+        bot.send_message(chat_id, f"⚠️ Joriy tiraj #{tiraj_id} da hali chek yo'q.")
+        return
+
+    aksiya_finish_data[chat_id] = {"step": "numbers", "tiraj_id": tiraj_id}
+
+    bot.send_message(
+        chat_id,
+        f"Joriy tiraj #{tiraj_id} da {len(cheklar)} ta chek bor.\n"
+        f"G'olib chek raqamlarini yuboring (har birini yangi qatorda):\n\n"
+        f"Misol:\n00123456\n00234567\n00345678",
+        reply_markup=types.ReplyKeyboardRemove()
+    )
+
+@bot.message_handler(
+    func=lambda m: m.chat.id in aksiya_finish_data and aksiya_finish_data[m.chat.id].get("step") == "numbers"
+)
+def aksiya_finish_numbers(message):
+    chat_id = message.chat.id
+    if not is_admin(chat_id):
+        return
+
+    tiraj_id = aksiya_finish_data[chat_id]["tiraj_id"]
+    numbers = [n.strip() for n in message.text.splitlines() if n.strip()]
+
+    if not numbers:
+        bot.send_message(chat_id, "⚠️ Kamida bitta chek raqami yuboring.")
+        return
+
+    cheklar = get_tiraj_checks(tiraj_id)
+    found = []
+    not_found = []
+
+    for num in numbers:
+        match = next((row for row in cheklar if row[4] == num), None)
+        if match:
+            found.append(match)
+        else:
+            not_found.append(num)
+
+    if not found:
+        bot.send_message(
+            chat_id,
+            "⚠️ Hech qanday mos chek topilmadi. Qaytadan urinib ko'ring yoki /aksiya_yakunla bilan qayta boshlang."
+        )
+        aksiya_finish_data.pop(chat_id, None)
+        return
+
+    aksiya_finish_data[chat_id]["step"] = "confirm"
+    aksiya_finish_data[chat_id]["winners"] = found
+
+    lines = ["✅ Topildi:"]
+    for row in found:
+        lines.append(f"- #{row[4]} → {row[2]}")
+
+    if not_found:
+        lines.append("\n❌ Topilmadi:")
+        for num in not_found:
+            lines.append(f"- #{num} (bu raqam ro'yxatda yo'q)")
+
+    lines.append("\nDavom ettirilsinmi?")
+
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton("✅ Ha", callback_data="aksiya_finish_yes"),
+        types.InlineKeyboardButton("❌ Bekor qilish", callback_data="aksiya_finish_no")
+    )
+    bot.send_message(chat_id, "\n".join(lines), reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("aksiya_finish_"))
+def aksiya_finish_confirm(call):
+    chat_id = call.message.chat.id
+    if not is_admin(chat_id):
+        return
+
+    bot.answer_callback_query(call.id)
+
+    if call.data == "aksiya_finish_no" or chat_id not in aksiya_finish_data:
+        aksiya_finish_data.pop(chat_id, None)
+        bot.send_message(chat_id, "❌ Bekor qilindi.", reply_markup=main_menu_keyboard(chat_id))
+        return
+
+    data = aksiya_finish_data[chat_id]
+    tiraj_id = data["tiraj_id"]
+    winners = data.get("winners", [])
+
+    all_checks = get_tiraj_checks(tiraj_id)
+    winner_chek_raqami = {row[4] for row in winners}
+    winner_user_ids = {row[1] for row in winners}
+
+    jami_chek = len(all_checks)
+    jami_summa = sum(int(row[5]) for row in all_checks if len(row) > 5 and str(row[5]).isdigit())
+
+    ism_by_user = {}
+    for row in all_checks:
+        ism_by_user.setdefault(row[1], row[2])
+    non_winner_user_ids = {row[1] for row in all_checks if row[1] not in winner_user_ids}
+
+    win_success, win_failed = 0, 0
+    for row in winners:
+        try:
+            bot.send_message(
+                int(row[1]),
+                f"🏆 Tabriklaymiz, {row[2]}!\n"
+                f"Siz Sharq Supermarket #{tiraj_id}-tiraj aksiyasida G'OLIB bo'ldingiz! 🎉\n\n"
+                f"🎁 Sovg'angizni olish uchun supermarketimizga tashrif buyuring\n"
+                f"va bu xabarni kassirga ko'rsating.\n\n"
+                f"Sharq Supermarket jamoasi sizni kutadi! 🛒"
+            )
+            win_success += 1
+        except Exception as e:
+            print(f"Aksiya g'olib xabar error uid={row[1]}: {e}")
+            win_failed += 1
+        time.sleep(0.05)
+
+    lose_success, lose_failed = 0, 0
+    for uid in non_winner_user_ids:
+        try:
+            bot.send_message(
+                int(uid),
+                f"🎰 Sharq Supermarket #{tiraj_id}-tiraj aksiyasi yakunlandi.\n\n"
+                f"Hurmatli {ism_by_user.get(uid, 'mijoz')}, bu safar omad kulib boqmadi 🍀\n"
+                f"Lekin umid uzilmasin — keyingi tirajda siz g'olib bo'lishingiz mumkin!\n\n"
+                f"Aksiyada qatnashganingiz uchun rahmat 🙏\n"
+                f"Sharq Supermarket doimo sizni kutadi! 🛒"
+            )
+            lose_success += 1
+        except Exception as e:
+            print(f"Aksiya qatnashchi xabar error uid={uid}: {e}")
+            lose_failed += 1
+        time.sleep(0.05)
+
+    close_tiraj(tiraj_id, jami_chek, jami_summa, len(winners))
+    mark_winning_checks(tiraj_id, winner_chek_raqami)
+    new_tiraj = create_new_tiraj()
+
+    aksiya_finish_data.pop(chat_id, None)
+
+    bot.send_message(
+        chat_id,
+        f"✅ *Tiraj #{tiraj_id} yakunlandi!*\n\n"
+        f"👥 Jami chek: {jami_chek}\n"
+        f"💰 Jami summa: {jami_summa:,} so'm\n"
+        f"🏆 G'oliblar: {len(winners)}\n\n"
+        f"📤 G'oliblarga yuborildi: {win_success}/{len(winners)}\n"
+        f"📤 Qolganlarga yuborildi: {lose_success}/{len(non_winner_user_ids)}\n\n"
+        f"🆕 Yangi tiraj #{new_tiraj[0]} boshlandi." if new_tiraj else f"⚠️ Yangi tiraj yaratilmadi, qo'lda tekshiring.",
+        parse_mode="Markdown",
+        reply_markup=main_menu_keyboard(chat_id)
+    )
+
+# ==================== AKSIYA XULOSASI (ADMIN) ====================
+@bot.message_handler(func=lambda m: m.text == "📊 Aksiya xulosasi")
+def aksiya_summary(message):
+    chat_id = message.chat.id
+    if not is_admin(chat_id):
+        return
+
+    try:
+        tiraj_records = aksiya_tirajlar_sheet.get_all_values()[1:]
+    except Exception as e:
+        print("aksiya_summary error:", e)
+        tiraj_records = []
+
+    if not tiraj_records:
+        bot.send_message(chat_id, "📊 Hali aksiya tirajlari yo'q.", reply_markup=main_menu_keyboard(chat_id))
+        return
+
+    current = next((r for r in tiraj_records if len(r) > 6 and r[6] == "faol"), None)
+    current_id = current[0] if current else None
+
+    checks = get_tiraj_checks(current_id) if current_id else []
+    unique_users = {row[1] for row in checks}
+    jami_summa_joriy = sum(int(row[5]) for row in checks if len(row) > 5 and str(row[5]).isdigit())
+
+    lines = ["📊 *AKSIYA XULOSASI*", ""]
+
+    if current:
+        lines.append(f"🔄 Joriy tiraj: #{current_id}")
+        lines.append(f"📅 Boshlangan: {current[1]}")
+        lines.append(f"📋 Qatnashchilar: {len(checks)} ta chek ({len(unique_users)} ta mijoz)")
+        lines.append(f"💰 Jami summa: {jami_summa_joriy:,} so'm")
+        lines.append("")
+
+    finished = [r for r in tiraj_records if len(r) > 6 and r[6] == "yakunlangan"]
+    if finished and current:
+        prev = finished[-1]
+        prev_chek = int(prev[3]) if len(prev) > 3 and prev[3].isdigit() else 0
+        prev_summa = int(prev[4]) if len(prev) > 4 and prev[4].isdigit() else 0
+        chek_diff_pct = ((len(checks) - prev_chek) / prev_chek * 100) if prev_chek else 0
+        summa_diff_pct = ((jami_summa_joriy - prev_summa) / prev_summa * 100) if prev_summa else 0
+        lines.append(f"📈 O'tgan tiraj (#{prev[0]}) bilan taqqoslash:")
+        lines.append(f"   Cheklar: {prev_chek} → {len(checks)} ({chek_diff_pct:+.0f}% o'zgarish)")
+        lines.append(f"   Summa: {prev_summa:,} → {jami_summa_joriy:,} so'm ({summa_diff_pct:+.1f}% 📈)")
+        lines.append("")
+
+    lines.append("🏆 Barcha tirajlar:")
+    for r in tiraj_records:
+        tid = r[0]
+        jc = r[3] if len(r) > 3 else "0"
+        js = r[4] if len(r) > 4 else "0"
+        try:
+            js_fmt = f"{int(js):,}"
+        except ValueError:
+            js_fmt = js
+        marker = " (joriy)" if current_id and tid == current_id else ""
+        lines.append(f"   #{tid} → {jc} chek | {js_fmt} so'm{marker}")
+
+    bot.send_message(chat_id, "\n".join(lines), parse_mode="Markdown", reply_markup=main_menu_keyboard(chat_id))
 
 
 # ==================== WEBHOOK ====================
